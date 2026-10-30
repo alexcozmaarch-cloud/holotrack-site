@@ -119,7 +119,7 @@ footer a { color: var(--muted); }
         <button type="submit">Get the Sunday Top 10</button>
       </form>
       <p class="msg" id="msg-top" role="status"></p>
-      <p class="fine">One e-mail a week. Confirm once, leave with one click. Data, not financial advice.</p>
+      <p class="fine">One e-mail a week. You confirm once, and can leave with one click. Data, not financial advice.</p>
     </div>
     <div class="hero-slide"><img id="hero-img" src="assets/example-3.jpg" alt="A HoloTrack Top 10 slide: the card, its price, and six months of price with support and highs and lows marked"></div>
   </div>
@@ -191,7 +191,7 @@ async function join(form, msg) {
   try {
     const r = await fetch(`${SB}/rest/v1/rpc/subscribe`, { method: "POST", headers: { apikey: KEY, "Content-Type": "application/json" }, body: JSON.stringify({ p_email: email, p_source: "site" }) });
     const t = r.ok ? await r.json() : null;
-    if (t === "ok") { msg.className = "msg ok"; msg.textContent = "Nearly there: check your inbox and confirm."; form.reset(); }
+    if (t === "ok") { msg.className = "msg ok"; msg.textContent = "You're on the list. We'll e-mail you once to confirm before your first Top 10."; form.reset(); }
     else { msg.className = "msg err"; msg.textContent = t === "invalid" ? "That e-mail address doesn't look complete." : "The sign-up didn't go through. Try again in a minute."; }
   } catch (e) { msg.className = "msg err"; msg.textContent = "The sign-up didn't go through. Try again in a minute."; }
 }
