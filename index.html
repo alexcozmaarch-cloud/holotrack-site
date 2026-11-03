@@ -66,6 +66,20 @@ h2 { font: 400 clamp(40px, 6vw, 64px)/.95 var(--display); margin: 0 0 10px; lett
 .strip img { flex: 0 0 auto; width: min(72vw, 300px); aspect-ratio: 4 / 5; object-fit: cover; border-radius: 14px; scroll-snap-align: start; box-shadow: 0 0 0 1px var(--line); max-width: 100%; }
 .stamp { font: 600 13px var(--body); color: var(--muted); letter-spacing: .04em; margin: 12px 0 0; }
 
+/* Receipts (3 Nov): every posted pick, judged by one plain rule; misses stay */
+.rc-stats { display: flex; flex-wrap: wrap; gap: 14px 34px; align-items: flex-end; margin: 0 0 22px; }
+.rc-stat b { display: block; font: 400 56px/.9 var(--display); letter-spacing: .02em; }
+.rc-stat span { color: var(--muted); font-size: 14px; }
+.rc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.rc { background: var(--ink-1); border: 1px solid var(--line); border-radius: 14px; padding: 10px; display: grid; gap: 6px; align-content: start; }
+.rc img { width: 100%; aspect-ratio: 5 / 7; object-fit: cover; border-radius: 8px; background: #0e1d3d; }
+.rc .nm { font-weight: 700; font-size: 15px; line-height: 1.2; }
+.rc .st { color: var(--muted); font-size: 12.5px; }
+.rc .mv { font: 400 30px/1 var(--display); letter-spacing: .03em; }
+.rc .tag { justify-self: start; font: 700 11px var(--body); letter-spacing: .12em; padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.rc.hit .tag, .rc.hit .mv { color: var(--up); } .rc.miss .tag, .rc.miss .mv { color: var(--down); } .rc.open .tag { color: var(--cyan); }
+.rc-wk { font: 700 12px var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 22px 0 10px; }
+.rc-empty { background: var(--ink-1); border: 1px dashed var(--line); border-radius: 16px; padding: 22px; color: var(--muted); }
 .reading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: center; }
 .reading img { width: 100%; border-radius: 16px; box-shadow: 0 0 0 1px var(--line); }
 .marks { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
@@ -136,6 +150,13 @@ footer a { color: var(--muted); }
     <p class="stamp" id="stamp">Example slides</p>
   </section>
 
+  <section aria-labelledby="rc">
+    <h2 id="rc">Receipts</h2>
+    <p class="sub">Every card from a posted Top 10, priced the Sunday it went out. Thirty days later it counts as a hit if its price rose 10% or more. Misses stay on the board. Each week appears here 14 days after its post.</p>
+    <div id="rc-body"><div class="rc-empty">The first receipts appear on 15 November, two weeks after the first Top 10 went out.</div></div>
+    <p class="stamp" id="rc-stamp">TCGplayer Near Mint market price, in USD.</p>
+  </section>
+
   <section aria-labelledby="read">
     <div class="reading">
       <img id="read-img" src="assets/example-3.jpg" alt="How a HoloTrack chart reads">
@@ -204,6 +225,26 @@ if (live) fetch(`${SB}/storage/v1/object/public/social/latest/top10.json`, { cac
   if (j.slides[2]) { document.getElementById("hero-img").src = j.slides[2]; document.getElementById("read-img").src = j.slides[3] || j.slides[2]; }
   const d = new Date(j.date + "T12:00:00");
   document.getElementById("stamp").textContent = `Posted ${d.toLocaleDateString("en-GB", { day: "numeric", month: "long" })}`;
+}).catch(() => {});
+// receipts: written nightly by HoloTrack (social/latest/receipts.json), each pick public 14 days after its post
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const usd = v => v == null ? "–" : "$" + (v >= 100 ? Math.round(v).toLocaleString("en-US") : v.toFixed(2));
+if (live) fetch(`${SB}/storage/v1/object/public/social/latest/receipts.json`, { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(j => {
+  if (!j) return;
+  const P = j.picks || [], st = j.stats || {}, body = document.getElementById("rc-body");
+  const fmt = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+  if (!P.length) { if (j.next_public) body.innerHTML = `<div class="rc-empty">The first receipts appear on ${fmt(j.next_public)}, two weeks after the first Top 10 went out.</div>`; return; }
+  const stats = `<div class="rc-stats">${st.scored ? `<div class="rc-stat"><b style="color:var(--up)">${st.hit_rate}%</b><span>hits, ${st.hits} of ${st.scored} judged</span></div>
+      <div class="rc-stat"><b>${st.median_30 > 0 ? "+" : ""}${st.median_30}%</b><span>median move after 30 days</span></div>` : `<div class="rc-stat"><b>0</b><span>judged so far: the first 30 days end ${fmt(new Date(Date.parse(P[P.length - 1].week) + 30 * 864e5).toISOString().slice(0, 10))}</span></div>`}
+      <div class="rc-stat"><b>${P.length}</b><span>picks on the board</span></div></div>`;
+  const weeks = [...new Set(P.map(p => p.week))];
+  body.innerHTML = stats + weeks.map(w => `<div class="rc-wk">Top 10 of ${fmt(w)}</div><div class="rc-grid">${P.filter(p => p.week === w).sort((a, b) => a.rank - b.rank).map(p => `
+    <div class="rc ${p.status}">${p.image ? `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy" onerror="this.removeAttribute('src');this.alt=''">` : ""}
+      <div class="nm">#${p.rank} ${esc(p.name)}</div><div class="st">${esc(p.set || "")}${p.num ? " · " + esc(p.num) : ""}</div>
+      <div class="mv">${p.move_pct == null ? "–" : (p.move_pct > 0 ? "+" : "") + p.move_pct.toFixed(1) + "%"}</div>
+      <div class="st">${usd(p.entry_usd)} → ${usd(p.last_usd)}${p.status === "open" ? ` · day ${p.days} of 30` : ""}</div>
+      <span class="tag">${p.status === "hit" ? "HIT" : p.status === "miss" ? "MISS" : "OPEN"}</span></div>`).join("")}</div>`).join("");
+  document.getElementById("rc-stamp").textContent = `${j.rule} ${j.source}. Updated ${fmt(j.updated)}.`;
 }).catch(() => {});
 </script>
 
