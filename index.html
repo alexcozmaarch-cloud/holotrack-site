@@ -66,20 +66,38 @@ h2 { font: 400 clamp(40px, 6vw, 64px)/.95 var(--display); margin: 0 0 10px; lett
 .strip img { flex: 0 0 auto; width: min(72vw, 300px); aspect-ratio: 4 / 5; object-fit: cover; border-radius: 14px; scroll-snap-align: start; box-shadow: 0 0 0 1px var(--line); max-width: 100%; }
 .stamp { font: 600 13px var(--body); color: var(--muted); letter-spacing: .04em; margin: 12px 0 0; }
 
-/* Receipts (3 Nov): every posted pick, judged by one plain rule; misses stay */
-.rc-stats { display: flex; flex-wrap: wrap; gap: 14px 34px; align-items: flex-end; margin: 0 0 22px; }
-.rc-stat b { display: block; font: 400 56px/.9 var(--display); letter-spacing: .02em; }
-.rc-stat span { color: var(--muted); font-size: 14px; }
-.rc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
-.rc { background: var(--ink-1); border: 1px solid var(--line); border-radius: 14px; padding: 10px; display: grid; gap: 6px; align-content: start; }
-.rc img { width: 100%; aspect-ratio: 5 / 7; object-fit: cover; border-radius: 8px; background: #0e1d3d; }
-.rc .nm { font-weight: 700; font-size: 15px; line-height: 1.2; }
-.rc .st { color: var(--muted); font-size: 12.5px; }
-.rc .mv { font: 400 30px/1 var(--display); letter-spacing: .03em; }
-.rc .tag { justify-self: start; font: 700 11px var(--body); letter-spacing: .12em; padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor; }
-.rc.hit .tag, .rc.hit .mv { color: var(--up); } .rc.miss .tag, .rc.miss .mv { color: var(--down); } .rc.open .tag { color: var(--cyan); }
-.rc-wk { font: 700 12px var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 22px 0 10px; }
+/* Receipts → the public scoreboard (17 Nov): every posted pick against the typical card; misses stay. Phone first. */
+.sb-head { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0 0 18px; }
+.sb-k { background: var(--ink-1); border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px 12px; min-width: 0; }
+.sb-k b { display: block; font: 400 clamp(34px, 9vw, 54px)/.9 var(--display); letter-spacing: .02em; }
+.sb-k span { display: block; color: var(--muted); font-size: 13px; line-height: 1.35; margin-top: 6px; }
+.sb-note { color: var(--muted); font-size: 15px; margin: 0 0 22px; }
+.sb-chart { background: var(--ink-1); border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px 10px; margin: 0 0 22px; }
+.sb-chart h3 { margin: 0 0 2px; font-size: 15px; } .sb-chart p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+.sb-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.wk { border: 1px solid var(--line); border-radius: 14px; background: var(--ink-1); margin: 0 0 12px; overflow: hidden; }
+.wk > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 14px; align-items: center; }
+.wk > summary::-webkit-details-marker { display: none; }
+.wk > summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.wk .t { font-weight: 700; } .wk .s { color: var(--muted); font-size: 13px; grid-column: 1; }
+.wk .v { grid-row: 1 / span 2; grid-column: 2; text-align: right; font: 400 30px/1 var(--display); letter-spacing: .03em; }
+.wk .v small { display: block; font: 600 11px var(--body); letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+.pill { display: inline-block; font: 700 10.5px var(--body); letter-spacing: .12em; padding: 2px 7px; border-radius: 999px; border: 1px solid currentColor; margin-left: 6px; vertical-align: 1px; }
+.pill.open { color: var(--cyan); } .pill.done { color: var(--muted); }
+.pk { display: grid; grid-template-columns: 22px 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 14px; border-top: 1px solid var(--line); }
+.pk .r { font: 400 20px var(--display); color: var(--muted); text-align: center; }
+.pk img { width: 44px; aspect-ratio: 5 / 7; object-fit: cover; border-radius: 4px; background: #0e1d3d; display: block; }
+.pk .ph { width: 44px; aspect-ratio: 5 / 7; border-radius: 4px; background: #0e1d3d; }
+.pk .n { font-weight: 700; font-size: 15px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk .m { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk .x { text-align: right; font: 400 24px/1 var(--display); letter-spacing: .03em; }
+.pk .x small { display: block; font: 500 11.5px var(--body); color: var(--muted); letter-spacing: 0; }
+.up { color: var(--up); } .dn { color: var(--down); } .mu { color: var(--muted); }
+.sb-cta { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; background: linear-gradient(135deg, rgba(2,236,250,.12), rgba(4,120,218,.12)); border: 1px solid rgba(2,236,250,.35); border-radius: 16px; padding: 18px; margin: 22px 0 0; }
+.sb-cta b { font: 400 30px/1 var(--display); letter-spacing: .02em; } .sb-cta span { display: block; color: #c9d6e8; font-size: 14px; margin-top: 4px; }
+.sb-cta a { font: 700 16px var(--body); color: #031024; background: linear-gradient(180deg, var(--cyan), #08b8e8); border-radius: 12px; padding: 12px 20px; text-decoration: none; white-space: nowrap; }
 .rc-empty { background: var(--ink-1); border: 1px dashed var(--line); border-radius: 16px; padding: 22px; color: var(--muted); }
+@media (min-width: 821px) { .pk { grid-template-columns: 26px 52px minmax(0, 1fr) auto; } .pk img, .pk .ph { width: 52px; } }
 .reading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: center; }
 .reading img { width: 100%; border-radius: 16px; box-shadow: 0 0 0 1px var(--line); }
 .marks { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
@@ -150,11 +168,12 @@ footer a { color: var(--muted); }
     <p class="stamp" id="stamp">Example slides</p>
   </section>
 
-  <section aria-labelledby="rc">
+  <section aria-labelledby="rc" id="receipts">
     <h2 id="rc">Receipts</h2>
-    <p class="sub">Every card from a posted Top 10, priced the Sunday it went out. Thirty days later it counts as a hit if its price rose 10% or more. Misses stay on the board. Each week appears here 14 days after its post.</p>
-    <div id="rc-body"><div class="rc-empty">The first receipts appear on 15 November, two weeks after the first Top 10 went out.</div></div>
-    <p class="stamp" id="rc-stamp">TCGplayer Near Mint market price, in USD.</p>
+    <p class="sub">Every card from every Top 10 we post, priced the Sunday it went out and judged 30 days later against the typical card over the same days. Misses stay on the board. A week shows here two weeks after its post.</p>
+    <div id="rc-body"><div class="rc-empty">The first receipts are on their way.</div></div>
+    <div class="sb-cta"><div><b>Get the calls before they're posted</b><span>The Sunday ten, the record and one miss, in your inbox every Sunday morning.</span></div><a href="#join">Sign up free</a></div>
+    <p class="stamp" id="rc-stamp">TCGplayer Near Mint market price, in USD. The typical card is the median move of every English card worth $3 or more.</p>
   </section>
 
   <section aria-labelledby="read">
@@ -226,25 +245,57 @@ if (live) fetch(`${SB}/storage/v1/object/public/social/latest/top10.json`, { cac
   const d = new Date(j.date + "T12:00:00");
   document.getElementById("stamp").textContent = `Posted ${d.toLocaleDateString("en-GB", { day: "numeric", month: "long" })}`;
 }).catch(() => {});
-// receipts: written nightly by HoloTrack (social/latest/receipts.json), each pick public 14 days after its post
+// receipts → scoreboard (17 Nov): written nightly by HoloTrack (social/latest/receipts.json); a week shows two weeks after its post
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const usd = v => v == null ? "–" : "$" + (v >= 100 ? Math.round(v).toLocaleString("en-US") : v.toFixed(2));
+const pct = (v, d = 1) => v == null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d) + "%";
+const pts = v => v == null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1);
+const tone = v => v == null ? "mu" : v > 0 ? "up" : v < 0 ? "dn" : "mu";
+const fmt = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+// a picture that fails tries the next address: our own copy → image cache → TCGplayer → TCGdex → a plain placeholder
+window.nextPic = im => { const L = JSON.parse(im.dataset.l || "[]"), i = +(im.dataset.i || 0) + 1; if (i < L.length) { im.dataset.i = i; im.src = L[i]; } else im.replaceWith(Object.assign(document.createElement("div"), { className: "ph" })); };
+function weekChart(W) {   // each week's Top 10 (median pick) against the typical card, oldest → newest
+  const ws = [...W].reverse(), n = ws.length, bw = 30, gap = 18, w = Math.max(280, n * (bw * 2 + gap) + 40), h = 150, pad = 26;
+  const vals = ws.flatMap(x => [x.median_pct, x.typical_pct]).filter(v => v != null), m = Math.max(5, ...vals.map(Math.abs));
+  const y = v => pad + (h - 2 * pad) / 2 * (1 - v / m), z = y(0);
+  let g = `<line x1="0" x2="${w}" y1="${z}" y2="${z}" stroke="rgba(143,166,198,.35)"/>`;
+  ws.forEach((x, i) => { const x0 = 20 + i * (bw * 2 + gap);
+    [[x.median_pct, x.median_pct >= x.typical_pct ? "var(--up)" : "var(--down)", "Top 10"], [x.typical_pct, "rgba(147,167,194,.55)", "typical"]].forEach(([v, c], k) => { if (v == null) return;
+      const yy = y(v), top = Math.min(yy, z), hh = Math.max(2, Math.abs(yy - z)), xx = x0 + k * bw + (k ? 2 : 0);
+      g += `<rect x="${xx}" y="${top}" width="${bw - 4}" height="${hh}" rx="4" fill="${c}"${x.open ? ' opacity=".7"' : ""}><title>${k ? "Typical card" : "Top 10 (median pick)"}: ${pct(v)}</title></rect>`;
+      g += `<text x="${xx + (bw - 4) / 2}" y="${v >= 0 ? top - 6 : top + hh + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="${k ? "#93a7c2" : c}">${pct(v, 0)}</text>`; });
+    g += `<text x="${x0 + bw}" y="${h + 14}" text-anchor="middle" font-size="11.5" fill="#93a7c2">${new Date(x.week + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}${x.open ? " ·" + x.days + "d" : ""}</text>`; });
+  return `<svg viewBox="0 0 ${w} ${h + 18}" style="max-width:${Math.max(w * 1.4, 360)}px" role="img" aria-label="Each week's Top 10 against the typical card" font-family="Archivo, system-ui, sans-serif">${g}</svg>`;
+}
 if (live) fetch(`${SB}/storage/v1/object/public/social/latest/receipts.json`, { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(j => {
   if (!j) return;
-  const P = j.picks || [], st = j.stats || {}, body = document.getElementById("rc-body");
-  const fmt = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+  const P = j.picks || [], W = j.weeks || [], st = j.stats || {}, body = document.getElementById("rc-body");
   if (!P.length) { if (j.next_public) body.innerHTML = `<div class="rc-empty">The first receipts appear on ${fmt(j.next_public)}, two weeks after the first Top 10 went out.</div>`; return; }
-  const stats = `<div class="rc-stats">${st.scored ? `<div class="rc-stat"><b style="color:var(--up)">${st.hit_rate}%</b><span>hits, ${st.hits} of ${st.scored} judged</span></div>
-      <div class="rc-stat"><b>${st.median_30 > 0 ? "+" : ""}${st.median_30}%</b><span>median move after 30 days</span></div>` : `<div class="rc-stat"><b>0</b><span>judged so far: the first 30 days end ${fmt(new Date(Date.parse(P[P.length - 1].week) + 30 * 864e5).toISOString().slice(0, 10))}</span></div>`}
-      <div class="rc-stat"><b>${P.length}</b><span>picks on the board</span></div></div>`;
+  const judged = st.scored || 0, open = P.filter(p => p.status === "open" && p.vs_typical != null);
+  const so = open.length ? Math.round(100 * open.filter(p => p.vs_typical > 0).length / open.length) : null;
+  const head = judged ? `<div class="sb-head">
+      <div class="sb-k"><b>${judged}</b><span>picks judged at day 30</span></div>
+      <div class="sb-k"><b class="${st.beat_rate >= 50 ? "up" : "dn"}">${st.beat_rate}%</b><span>beat the typical card</span></div>
+      <div class="sb-k"><b class="${tone(st.median_vs_typical)}">${pts(st.median_vs_typical)}</b><span>points vs the typical card (median)</span></div></div>`
+    : `<div class="sb-head">
+      <div class="sb-k"><b>0</b><span>judged so far · the first on ${fmt(st.first_judged || P[P.length - 1].week)}</span></div>
+      <div class="sb-k"><b class="${so == null ? "mu" : so >= 50 ? "up" : "dn"}">${so == null ? "–" : so + "%"}</b><span>ahead of the typical card so far</span></div>
+      <div class="sb-k"><b>${P.length}</b><span>picks on the board</span></div></div>`;
+  const note = `<p class="sb-note">A pick <b>beats the market</b> when, 30 days after the post, it did better than the typical card over the same days${judged ? "" : ". Until then it shows how it is doing so far"}.</p>`;
+  const chart = W.length ? `<div class="sb-chart"><h3>Each week's Top 10 against the typical card</h3><p>Coloured bar: the Top 10's median pick, green when it is ahead. Grey: the typical card over the same days.</p>${weekChart(W)}</div>` : "";
   const weeks = [...new Set(P.map(p => p.week))];
-  body.innerHTML = stats + weeks.map(w => `<div class="rc-wk">Top 10 of ${fmt(w)}</div><div class="rc-grid">${P.filter(p => p.week === w).sort((a, b) => a.rank - b.rank).map(p => `
-    <div class="rc ${p.status}">${p.image ? `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy" onerror="this.removeAttribute('src');this.alt=''">` : ""}
-      <div class="nm">#${p.rank} ${esc(p.name)}</div><div class="st">${esc(p.set || "")}${p.num ? " · " + esc(p.num) : ""}</div>
-      <div class="mv">${p.move_pct == null ? "–" : (p.move_pct > 0 ? "+" : "") + p.move_pct.toFixed(1) + "%"}</div>
-      <div class="st">${usd(p.entry_usd)} → ${usd(p.last_usd)}${p.status === "open" ? ` · day ${p.days} of 30` : ""}</div>
-      <span class="tag">${p.status === "hit" ? "HIT" : p.status === "miss" ? "MISS" : "OPEN"}</span></div>`).join("")}</div>`).join("");
-  document.getElementById("rc-stamp").textContent = `${j.rule} ${j.source}. Updated ${fmt(j.updated)}.`;
+  const rows = weeks.map((w, wi) => { const x = W.find(v => v.week === w) || {}, ps = P.filter(p => p.week === w).sort((a, b) => a.rank - b.rank), isOpen = ps.some(p => p.status === "open");
+    return `<details class="wk"${wi === 0 ? " open" : ""}><summary>
+      <span class="t">Top 10 of ${fmt(w)}<span class="pill ${isOpen ? "open" : "done"}">${isOpen ? `DAY ${x.days ?? ps[0].days} OF 30` : "JUDGED"}</span></span>
+      <span class="s">${x.n ? `${x.beat} of ${x.n} ${isOpen ? "ahead so far" : "beat the market"} · typical card ${pct(x.typical_pct)}` : ""}</span>
+      <span class="v ${tone(x.vs_typical)}">${pts(x.vs_typical)}<small>pts vs typical</small></span></summary>
+      ${ps.map(p => { const L = (p.images && p.images.length ? p.images : p.image ? [p.image] : []);
+        return `<div class="pk"><span class="r">${p.rank}</span>${L.length ? `<img src="${esc(L[0])}" data-l='${esc(JSON.stringify(L))}' alt="" loading="lazy" referrerpolicy="no-referrer" onerror="nextPic(this)">` : `<div class="ph"></div>`}
+        <div style="min-width:0"><div class="n">${esc(p.name)}${p.status === "beat" ? ' <span class="pill" style="color:var(--up)">BEAT</span>' : p.status === "miss" ? ' <span class="pill" style="color:var(--down)">MISS</span>' : ""}</div>
+        <div class="m">${esc(p.set || "")}${p.num ? " · " + esc(p.num) : ""} · ${usd(p.entry_usd)} → ${usd(p.last_usd)}</div></div>
+        <div class="x ${tone(p.vs_typical)}">${pts(p.vs_typical)}<small>${pct(p.move_pct)} · typical ${pct(p.typical_pct, 0)}</small></div></div>`; }).join("")}</details>`; }).join("");
+  body.innerHTML = head + note + chart + rows;
+  document.getElementById("rc-stamp").textContent = `${j.source}. The typical card is ${j.typical || "the median card"}. Updated ${fmt(j.updated)}.`;
 }).catch(() => {});
 </script>
 
