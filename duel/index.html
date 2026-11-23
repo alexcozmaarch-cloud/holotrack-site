@@ -195,12 +195,12 @@ async function share(){
   x.fillStyle="#f4f4f5"; x.font='800 54px "Schibsted Grotesk", sans-serif'; x.fillText("HoloTrack",210,218);
   x.fillStyle="#9c9ca3"; x.font='600 30px "IBM Plex Mono", monospace'; x.fillText("ART DUEL · 10 PICKS",90,380);
   x.fillStyle="#f4f4f5"; x.font='800 120px "Schibsted Grotesk", sans-serif'; x.fillText("My art",90,520); x.fillText("taste",90,640);
-  let y=800; for(const b of ((res&&res.bars)||[])){ const you=pc(b.you), all=pc(b.all);
+  const NB=((res&&res.bars)||[]).length, bars_h=NB>3?150:180; let y=780; for(const b of ((res&&res.bars)||[])){ const you=pc(b.you), all=pc(b.all);
     x.font='600 40px "Instrument Sans", sans-serif'; x.fillStyle="#f4f4f5"; x.fillText(b.left,90,y); x.fillStyle="#9c9ca3"; x.textAlign="right"; x.fillText(b.right,990,y); x.textAlign="left";
     x.fillStyle="#2c2c2e"; x.beginPath(); x.roundRect(90,y+30,900,22,11); x.fill();
     if(you!=null){ x.fillStyle="#f4f4f5"; x.beginPath(); x.roundRect(90,y+30,Math.max(22,9*you),22,11); x.fill(); }
     if(all!=null){ x.fillStyle="#9c9ca3"; x.fillRect(90+9*all-3,y+18,6,46); }
-    y+=180; }
+    y+=bars_h; }
   x.fillStyle="#9c9ca3"; x.font='400 32px "Instrument Sans", sans-serif'; x.fillText("White bar: me. Grey tick: everyone this week.",90,y-40);
   x.fillStyle="#1c1c1e"; x.beginPath(); x.roundRect(90,y+20,900,300,24); x.fill();
   x.fillStyle="#f4f4f5"; x.font='600 64px "IBM Plex Mono", monospace'; x.fillText($("crowd").textContent,130,y+120);
