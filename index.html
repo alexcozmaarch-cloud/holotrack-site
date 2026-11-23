@@ -135,6 +135,8 @@ footer a { color: var(--muted); }
   <header class="top">
     <img src="assets/lockup-horizontal.png" alt="HoloTrack" width="160" height="34">
     <nav class="social" aria-label="HoloTrack elsewhere">
+      <a href="duel/">Art Duel</a>
+      <a href="track.html">Track record</a>
       <a href="https://www.instagram.com/holotrack/" target="_blank" rel="noopener">Instagram</a>
       <a href="https://www.youtube.com/@holotrack" target="_blank" rel="noopener">YouTube</a>
     </nav>
@@ -168,13 +170,6 @@ footer a { color: var(--muted); }
     <p class="stamp" id="stamp">Example slides</p>
   </section>
 
-  <section aria-labelledby="rc" id="receipts">
-    <h2 id="rc">Receipts</h2>
-    <p class="sub">Every card from every Top 10 we post, priced the Sunday it went out and judged 30 days later against the typical card over the same days. Misses stay on the board. A week shows here two weeks after its post.</p>
-    <div id="rc-body"><div class="rc-empty">The first receipts are on their way.</div></div>
-    <div class="sb-cta"><div><b>Get the calls before they're posted</b><span>The Sunday ten, the record and one miss, in your inbox every Sunday morning.</span></div><a href="#join">Sign up free</a></div>
-    <p class="stamp" id="rc-stamp">TCGplayer Near Mint market price, in USD. The typical card is the median move of every English card worth $3 or more.</p>
-  </section>
 
   <section aria-labelledby="read">
     <div class="reading">
@@ -201,6 +196,11 @@ footer a { color: var(--muted); }
       <div class="day"><div class="d">Wednesday</div><h3>Card spotlight</h3><p>One card, its price story, its floor, and who is talking about it.</p></div>
       <div class="day"><div class="d">Friday</div><h3>Set zones or sealed</h3><p>A whole set against its own year, or a sealed box against what's inside.</p></div>
     </div>
+  </section>
+
+  <section aria-labelledby="tr" id="receipts">
+    <h2 id="tr">Our track record</h2>
+    <p class="sub">We test our own picks in public: every Top 10 card is judged 30 days later against the typical card, and the misses stay up. <a href="track.html">See the track record →</a></p>
   </section>
 
   <section class="close" aria-labelledby="join">
@@ -244,58 +244,6 @@ if (live) fetch(`${SB}/storage/v1/object/public/social/latest/top10.json`, { cac
   if (j.slides[2]) { document.getElementById("hero-img").src = j.slides[2]; document.getElementById("read-img").src = j.slides[3] || j.slides[2]; }
   const d = new Date(j.date + "T12:00:00");
   document.getElementById("stamp").textContent = `Posted ${d.toLocaleDateString("en-GB", { day: "numeric", month: "long" })}`;
-}).catch(() => {});
-// receipts → scoreboard (17 Nov): written nightly by HoloTrack (social/latest/receipts.json); a week shows two weeks after its post
-const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const usd = v => v == null ? "–" : "$" + (v >= 100 ? Math.round(v).toLocaleString("en-US") : v.toFixed(2));
-const pct = (v, d = 1) => v == null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d) + "%";
-const pts = v => v == null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1);
-const tone = v => v == null ? "mu" : v > 0 ? "up" : v < 0 ? "dn" : "mu";
-const fmt = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" });
-// a picture that fails tries the next address: our own copy → image cache → TCGplayer → TCGdex → a plain placeholder
-window.nextPic = im => { const L = JSON.parse(im.dataset.l || "[]"), i = +(im.dataset.i || 0) + 1; if (i < L.length) { im.dataset.i = i; im.src = L[i]; } else im.replaceWith(Object.assign(document.createElement("div"), { className: "ph" })); };
-function weekChart(W) {   // each week's Top 10 (median pick) against the typical card, oldest → newest
-  const ws = [...W].reverse(), n = ws.length, bw = 30, gap = 18, w = Math.max(280, n * (bw * 2 + gap) + 40), h = 150, pad = 26;
-  const vals = ws.flatMap(x => [x.median_pct, x.typical_pct]).filter(v => v != null), m = Math.max(5, ...vals.map(Math.abs));
-  const y = v => pad + (h - 2 * pad) / 2 * (1 - v / m), z = y(0);
-  let g = `<line x1="0" x2="${w}" y1="${z}" y2="${z}" stroke="rgba(143,166,198,.35)"/>`;
-  ws.forEach((x, i) => { const x0 = 20 + i * (bw * 2 + gap);
-    [[x.median_pct, x.median_pct >= x.typical_pct ? "var(--up)" : "var(--down)", "Top 10"], [x.typical_pct, "rgba(147,167,194,.55)", "typical"]].forEach(([v, c], k) => { if (v == null) return;
-      const yy = y(v), top = Math.min(yy, z), hh = Math.max(2, Math.abs(yy - z)), xx = x0 + k * bw + (k ? 2 : 0);
-      g += `<rect x="${xx}" y="${top}" width="${bw - 4}" height="${hh}" rx="4" fill="${c}"${x.open ? ' opacity=".7"' : ""}><title>${k ? "Typical card" : "Top 10 (median pick)"}: ${pct(v)}</title></rect>`;
-      g += `<text x="${xx + (bw - 4) / 2}" y="${v >= 0 ? top - 6 : top + hh + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="${k ? "#93a7c2" : c}">${pct(v, 0)}</text>`; });
-    g += `<text x="${x0 + bw}" y="${h + 14}" text-anchor="middle" font-size="11.5" fill="#93a7c2">${new Date(x.week + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })}${x.open ? " ·" + x.days + "d" : ""}</text>`; });
-  return `<svg viewBox="0 0 ${w} ${h + 18}" style="max-width:${Math.max(w * 1.4, 360)}px" role="img" aria-label="Each week's Top 10 against the typical card" font-family="Archivo, system-ui, sans-serif">${g}</svg>`;
-}
-if (live) fetch(`${SB}/storage/v1/object/public/social/latest/receipts.json`, { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(j => {
-  if (!j) return;
-  const P = j.picks || [], W = j.weeks || [], st = j.stats || {}, body = document.getElementById("rc-body");
-  if (!P.length) { if (j.next_public) body.innerHTML = `<div class="rc-empty">The first receipts appear on ${fmt(j.next_public)}, two weeks after the first Top 10 went out.</div>`; return; }
-  const judged = st.scored || 0, open = P.filter(p => p.status === "open" && p.vs_typical != null);
-  const so = open.length ? Math.round(100 * open.filter(p => p.vs_typical > 0).length / open.length) : null;
-  const head = judged ? `<div class="sb-head">
-      <div class="sb-k"><b>${judged}</b><span>picks judged at day 30</span></div>
-      <div class="sb-k"><b class="${st.beat_rate >= 50 ? "up" : "dn"}">${st.beat_rate}%</b><span>beat the typical card</span></div>
-      <div class="sb-k"><b class="${tone(st.median_vs_typical)}">${pts(st.median_vs_typical)}</b><span>points vs the typical card (median)</span></div></div>`
-    : `<div class="sb-head">
-      <div class="sb-k"><b>0</b><span>judged so far · the first on ${fmt(st.first_judged || P[P.length - 1].week)}</span></div>
-      <div class="sb-k"><b class="${so == null ? "mu" : so >= 50 ? "up" : "dn"}">${so == null ? "–" : so + "%"}</b><span>ahead of the typical card so far</span></div>
-      <div class="sb-k"><b>${P.length}</b><span>picks on the board</span></div></div>`;
-  const note = `<p class="sb-note">A pick <b>beats the market</b> when, 30 days after the post, it did better than the typical card over the same days${judged ? "" : ". Until then it shows how it is doing so far"}.</p>`;
-  const chart = W.length ? `<div class="sb-chart"><h3>Each week's Top 10 against the typical card</h3><p>Coloured bar: the Top 10's median pick, green when it is ahead. Grey: the typical card over the same days.</p>${weekChart(W)}</div>` : "";
-  const weeks = [...new Set(P.map(p => p.week))];
-  const rows = weeks.map((w, wi) => { const x = W.find(v => v.week === w) || {}, ps = P.filter(p => p.week === w).sort((a, b) => a.rank - b.rank), isOpen = ps.some(p => p.status === "open");
-    return `<details class="wk"${wi === 0 ? " open" : ""}><summary>
-      <span class="t">Top 10 of ${fmt(w)}<span class="pill ${isOpen ? "open" : "done"}">${isOpen ? `DAY ${x.days ?? ps[0].days} OF 30` : "JUDGED"}</span></span>
-      <span class="s">${x.n ? `${x.beat} of ${x.n} ${isOpen ? "ahead so far" : "beat the market"} · typical card ${pct(x.typical_pct)}` : ""}</span>
-      <span class="v ${tone(x.vs_typical)}">${pts(x.vs_typical)}<small>pts vs typical</small></span></summary>
-      ${ps.map(p => { const L = (p.images && p.images.length ? p.images : p.image ? [p.image] : []);
-        return `<div class="pk"><span class="r">${p.rank}</span>${L.length ? `<img src="${esc(L[0])}" data-l='${esc(JSON.stringify(L))}' alt="" loading="lazy" referrerpolicy="no-referrer" onerror="nextPic(this)">` : `<div class="ph"></div>`}
-        <div style="min-width:0"><div class="n">${esc(p.name)}${p.status === "beat" ? ' <span class="pill" style="color:var(--up)">BEAT</span>' : p.status === "miss" ? ' <span class="pill" style="color:var(--down)">MISS</span>' : ""}</div>
-        <div class="m">${esc(p.set || "")}${p.num ? " · " + esc(p.num) : ""} · ${usd(p.entry_usd)} → ${usd(p.last_usd)}</div></div>
-        <div class="x ${tone(p.vs_typical)}">${pts(p.vs_typical)}<small>${pct(p.move_pct)} · typical ${pct(p.typical_pct, 0)}</small></div></div>`; }).join("")}</details>`; }).join("");
-  body.innerHTML = head + note + chart + rows;
-  document.getElementById("rc-stamp").textContent = `${j.source}. The typical card is ${j.typical || "the median card"}. Updated ${fmt(j.updated)}.`;
 }).catch(() => {});
 </script>
 
