@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Art Duel · HoloTrack</title>
+<meta name="description" content="Two Pokémon cards, prices hidden. Pick the art you'd frame. 10 picks, no login, 30 seconds.">
+<meta property="og:title" content="Art Duel · HoloTrack">
+<meta property="og:description" content="Two cards, prices hidden. Which art would you frame? 10 picks, no login.">
+<link rel="icon" href="../assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@800&family=Instrument+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@600&display=swap" rel="stylesheet">
+<style>
+/* Art Duel (23 Nov, Fingerprint inbox Decided): one pair at a time on black, the HoloTrack mock-up's type and spacing */
+:root{--bg:#000;--card:#1c1c1e;--line:#2c2c2e;--ring:#38383a;--fg:#f4f4f5;--muted:#9c9ca3;--faint:#6e6e74;--cyan:#02ecfa;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:400 16px/1.45 "Instrument Sans",-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+.wrap{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;gap:18px;
+  padding-block:max(20px,env(safe-area-inset-top,0px)) max(24px,env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.mono{font:600 11px/1.3 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.top{display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:8px;color:var(--fg);text-decoration:none;font:800 18px/1 "Schibsted Grotesk",sans-serif;letter-spacing:-.02em}
+.brand svg{width:26px;height:26px}
+.bar{height:4px;background:var(--line);border-radius:2px}.bar i{display:block;height:4px;background:var(--fg);border-radius:2px;width:0;transition:width .25s}
+.prog{display:flex;justify-content:space-between}
+h1{margin:0;font:800 clamp(26px,7vw,32px)/1.04 "Schibsted Grotesk",sans-serif;letter-spacing:-.02em;text-wrap:balance}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pick{appearance:none;border:0;background:none;color:inherit;padding:0;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:8px;font:inherit;min-width:0}
+.pick .art{position:relative;aspect-ratio:63/88;border-radius:10px;background:var(--card);overflow:hidden;box-shadow:0 0 0 1px var(--ring);transition:box-shadow .15s,opacity .2s}
+.pick img{width:100%;height:100%;object-fit:cover;display:block}
+.pick .art span{position:absolute;inset:0;display:grid;place-items:center;color:var(--faint)}
+.pick.me .art{box-shadow:0 0 0 3px var(--fg)}
+.pick.other{opacity:.45}
+.pick:disabled{cursor:default}
+.pick:focus-visible{outline:none}.pick:focus-visible .art{box-shadow:0 0 0 3px var(--cyan)}
+.cap{font-size:13px;line-height:17px;color:var(--muted);min-height:51px}
+.cap b{color:var(--fg);font-weight:600;display:block}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--card);border-radius:12px;padding:12px 14px}
+.btn{appearance:none;border:0;cursor:pointer;min-height:44px;padding:0 18px;border-radius:22px;background:var(--fg);color:#111214;font-family:inherit;font-weight:700;font-size:15px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+.btn.big{min-height:50px;border-radius:25px;font-size:17px;width:100%}
+.btn.ghost{background:var(--line);color:var(--fg);width:100%}
+.btn:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+.muted{color:var(--muted)}
+.hint{margin:0;font-size:15px;line-height:20px;color:var(--muted)}
+.foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;font-size:12px;line-height:16px;color:var(--muted)}
+.foot a,.foot button.link{color:var(--fg)}
+button.link{appearance:none;background:none;border:0;padding:0;font:inherit;text-decoration:underline;cursor:pointer}
+.panel{background:var(--card);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.lean{display:flex;flex-direction:column;gap:6px}
+.lean .lab{display:flex;justify-content:space-between;font-size:13px}
+.track{position:relative;height:8px;background:var(--line);border-radius:4px}
+.track i{position:absolute;left:0;top:0;height:8px;border-radius:4px;background:var(--fg)}
+.track b{position:absolute;top:-4px;width:2px;height:16px;background:var(--muted)}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.stat{background:var(--card);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.stat .n{font:600 28px/1.1 "IBM Plex Mono",monospace}
+.stat .a{font-size:17px;font-weight:700;line-height:22px;overflow-wrap:anywhere}
+.stack{display:flex;flex-direction:column;gap:10px}
+dialog{background:var(--card);color:var(--fg);border:1px solid var(--ring);border-radius:14px;max-width:min(440px,calc(100vw - 32px));padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.7)}
+dialog label{display:flex;flex-direction:column;gap:6px;font-size:14px}
+dialog select,dialog textarea{font:inherit;background:#000;color:var(--fg);border:1px solid var(--ring);border-radius:8px;padding:10px}
+.err{color:#ff9f8a}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a class="brand" href="../" aria-label="HoloTrack home">
+      <svg viewBox="0 0 100 103" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#02ecfa"/><stop offset="1" stop-color="#0478da"/></linearGradient><mask id="m"><rect width="100" height="103" fill="#fff"/><path d="M36 53.15h8.3v19h11.7v-19h8.3V104H56V79.3H44.3V104H36z" fill="#000"/></mask></defs><rect width="100" height="103" rx="20" fill="url(#g)" mask="url(#m)"/></svg>
+      HoloTrack</a>
+    <span class="mono">Art duel</span>
+  </div>
+
+  <section id="play" class="stack" aria-live="polite">
+    <div class="stack" style="gap:8px">
+      <div class="prog mono"><span id="step">Pick 1 of 10</span><span>No login · 30 seconds</span></div>
+      <div class="bar"><i id="barFill"></i></div>
+    </div>
+    <h1 id="q">Which art would you frame?</h1>
+    <div class="pair" id="pair">
+      <button class="pick" type="button" data-side="left" aria-label="Pick the left card" disabled><div class="art"><span class="mono">Loading</span></div><div class="cap"></div></button>
+      <button class="pick" type="button" data-side="right" aria-label="Pick the right card" disabled><div class="art"><span class="mono">Loading</span></div><div class="cap"></div></button>
+    </div>
+    <div class="verdict" id="verdict" hidden><span id="vtext"></span><button class="btn" type="button" id="next">Next</button></div>
+    <p class="hint" id="hint">Tap the one you'd frame. Prices are hidden: this is about the art.</p>
+    <p class="hint err" id="err" hidden></p>
+  </section>
+
+  <section id="result" class="stack" hidden aria-live="polite">
+    <div class="stack" style="gap:6px">
+      <span class="mono">10 picks done</span>
+      <h1>Your art taste</h1>
+      <p class="hint">How your picks lean, next to everyone who played this week.</p>
+    </div>
+    <div class="panel" id="bars"></div>
+    <div class="two">
+      <div class="stat"><span class="n" id="crowd">–</span><span class="muted" style="font-size:13px">picks with the crowd</span></div>
+      <div class="stat"><span class="a" id="artist">–</span><span class="muted" style="font-size:13px">the artist you picked most</span></div>
+    </div>
+    <div class="stack">
+      <button class="btn big" type="button" id="share">Share your taste</button>
+      <button class="btn ghost" type="button" id="again">10 more picks</button>
+      <p class="hint" style="font-size:13px;line-height:18px;text-align:center">On the 1st of each month we post the community ranking and what it changed in our study. Follow <a href="https://www.instagram.com/holotrack/" style="color:var(--fg)">@holotrack</a> to see where your picks landed.</p>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span>Your picks are anonymous and go into our research on what makes card art loved. Every month we publish what we learned. No account, no email, nothing sold. <a href="../privacy.html#duel">Privacy</a></span>
+    <span>Your anonymous browser ID: <span class="mono" id="devid" style="text-transform:none;letter-spacing:0">–</span> (quote it if you want your picks deleted).</span>
+    <span>Card art © its artists and The Pokémon Company. Shown for a non-commercial study. <button class="link" type="button" id="removeOpen">Ask us to remove a card</button></span>
+  </div>
+</div>
+
+<dialog id="removeDlg" aria-labelledby="rmTitle">
+  <form method="dialog" id="removeForm" class="stack">
+    <strong id="rmTitle">Remove a card from the duel</strong>
+    <label>Card<select id="rmCard" required></select></label>
+    <label>Note (optional)<textarea id="rmNote" rows="3" maxlength="500" placeholder="e.g. I'm the artist"></textarea></label>
+    <p class="hint" style="font-size:13px">It leaves the pool straight away (we promise within 48 hours).</p>
+    <p class="hint" id="rmMsg" hidden></p>
+    <div class="two"><button class="btn ghost" type="button" id="rmCancel">Cancel</button><button class="btn" type="submit" id="rmSend">Remove</button></div>
+  </form>
+</dialog>
+
+<script>
+(()=>{
+const SB="https://uhkvzsjaavcbawuhvrkz.supabase.co", KEY="sb_publishable_ny_oW8k07iVbf2I-WiaORw_wbS83Jid";
+const $=id=>document.getElementById(id);
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+// a random id kept in this browser only (no IP, no account) — the study counts rounds per device with it
+let DEV=store.get("duel-device");
+if(!DEV||!/^[A-Za-z0-9_-]{8,64}$/.test(DEV)){ DEV=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36)).replace(/[^A-Za-z0-9_-]/g,""); store.set("duel-device",DEV); }
+// signed in to the HoloTrack app on the same site → the session's token (Alex's own picks, kept apart)
+function bearer(){ try{ for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(/^sb-.*-auth-token$/.test(k)){ const t=JSON.parse(localStorage.getItem(k)); if(t&&t.access_token&&(!t.expires_at||t.expires_at*1000>Date.now())) return t.access_token; } } }catch(e){} return KEY; }
+async function rpc(fn,body){ const r=await fetch(`${SB}/rest/v1/rpc/${fn}`,{method:"POST",headers:{apikey:KEY,Authorization:"Bearer "+bearer(),"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok) throw new Error(`${r.status}`); return r.json(); }
+const QS=["Which art would you frame?","Same Pokémon, two artists. Which one?","Which would you put on your wall?","Pick the one you'd keep forever."];
+let R=null, i=0, shown=0, picked=false, seen=new Map(), res=null;
+const btns=[...document.querySelectorAll(".pick")];
+function err(m){ const e=$("err"); e.textContent=m; e.hidden=!m; }
+async function start(){
+  err(""); $("result").hidden=true; $("play").hidden=false; i=0;
+  btns.forEach(b=>{ b.querySelector(".art").innerHTML='<span class="mono">Loading</span>'; b.querySelector(".cap").textContent=""; b.disabled=true; b.className="pick"; });
+  try{ R=await rpc("duel_start",{p_device:DEV}); }catch(e){ R=null; }
+  if(!R||R.error||!R.pairs||!R.pairs.length){ err(R&&R.error==="enough for today"?"That's plenty for today — thank you! Come back tomorrow.":"The duel couldn't start. Please try again in a minute."); return; }
+  show();
+}
+function show(){
+  const p=R.pairs[i]; picked=false; shown=performance.now();
+  $("step").textContent=`Pick ${i+1} of ${R.pairs.length}`; $("barFill").style.width=(i*100/R.pairs.length)+"%";
+  $("q").textContent=QS[i%QS.length]; $("verdict").hidden=true; $("hint").hidden=false;
+  btns.forEach(b=>{ const c=p[b.dataset.side]; seen.set(c.id,c); b.className="pick"; b.disabled=false;
+    b.querySelector(".art").innerHTML=`<img alt="" decoding="async" src="${c.img}">`; b.querySelector(".cap").textContent=""; });
+  // preload the next pair
+  const n=R.pairs[i+1]; if(n) [n.left.img,n.right.img].forEach(u=>{ const im=new Image(); im.src=u; });
+}
+async function pick(side){
+  if(picked||!R) return; picked=true;
+  const p=R.pairs[i], ms=Math.round(performance.now()-shown), id=p[side].id;
+  btns.forEach(b=>{ b.disabled=true; b.classList.add(b.dataset.side===side?"me":"other"); });
+  $("barFill").style.width=((i+1)*100/R.pairs.length)+"%";
+  let v=null; try{ v=await rpc("duel_vote",{p_round:R.round,p_device:DEV,p_pick:p.pick,p_picked:id,p_ms:ms}); }catch(e){}
+  if(v&&!v.error){ for(const s of ["left","right"]){ const c=v[s]||{}, cap=btns.find(b=>b.dataset.side===s).querySelector(".cap");
+      cap.innerHTML=`<b>${esc(c.name||"")}</b>${esc(c.artist||"")}${c.set?" · "+esc(c.set):""}`; seen.set(p[s].id,{...p[s],name:c.name}); }
+    $("vtext").textContent=v.share==null?`First votes on this pair — ${v.n} so far`:`${v.share} % picked this one too`; }
+  else $("vtext").textContent="Saved.";
+  $("hint").hidden=true; $("verdict").hidden=false; $("next").textContent=i+1<R.pairs.length?"Next":"See your taste"; $("next").focus({preventScroll:true});
+}
+async function next(){ i++; if(i<R.pairs.length) return show(); await result(); }
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+const pc=x=>x==null?null:Math.round(100*x);
+async function result(){
+  $("play").hidden=true; $("result").hidden=false; window.scrollTo({top:0});
+  try{ res=await rpc("duel_result",{p_round:R.round,p_device:DEV}); }catch(e){ res=null; }
+  const bars=(res&&res.bars)||[];
+  $("bars").innerHTML=bars.map(b=>{ const you=pc(b.you), all=pc(b.all);
+    return `<div class="lean"><div class="lab"><span>${esc(b.left)}</span><span class="muted">${esc(b.right)}</span></div>
+      <div class="track" role="img" aria-label="${esc(b.left)}: you ${you==null?"no pairs this round":you+" %"}, everyone ${all==null?"not enough yet":all+" %"}">${you==null?"":`<i style="width:${you}%"></i>`}${all==null?"":`<b style="left:calc(${all}% - 1px)"></b>`}</div></div>`; }).join("")
+    +`<span class="muted" style="font-size:12px">White bar: you. Grey tick: everyone this week.${bars.some(b=>b.you==null)?" A bar stays empty when your round had no such pair.":""}</span>`;
+  $("crowd").textContent=res&&res.judged?`${res.with_crowd} / ${res.judged}`:"first!";
+  $("artist").textContent=(res&&res.artist)||"–";
+}
+async function share(){
+  const c=document.createElement("canvas"); c.width=1080; c.height=1920; const x=c.getContext("2d");
+  try{ await document.fonts.ready; }catch(e){}
+  x.fillStyle="#000"; x.fillRect(0,0,1080,1920);
+  const g=x.createLinearGradient(0,150,0,250); g.addColorStop(0,"#02ecfa"); g.addColorStop(1,"#0478da");
+  const mark=new Image(); mark.src="data:image/svg+xml,"+encodeURIComponent(document.querySelector(".brand svg").outerHTML.replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" width="200" height="206" '));
+  try{ await mark.decode(); x.drawImage(mark,90,150,96,99); }catch(e){ x.fillStyle=g; x.beginPath(); x.roundRect(90,150,96,99,20); x.fill(); }
+  x.fillStyle="#f4f4f5"; x.font='800 54px "Schibsted Grotesk", sans-serif'; x.fillText("HoloTrack",210,218);
+  x.fillStyle="#9c9ca3"; x.font='600 30px "IBM Plex Mono", monospace'; x.fillText("ART DUEL · 10 PICKS",90,380);
+  x.fillStyle="#f4f4f5"; x.font='800 120px "Schibsted Grotesk", sans-serif'; x.fillText("My art",90,520); x.fillText("taste",90,640);
+  let y=800; for(const b of ((res&&res.bars)||[])){ const you=pc(b.you), all=pc(b.all);
+    x.font='600 40px "Instrument Sans", sans-serif'; x.fillStyle="#f4f4f5"; x.fillText(b.left,90,y); x.fillStyle="#9c9ca3"; x.textAlign="right"; x.fillText(b.right,990,y); x.textAlign="left";
+    x.fillStyle="#2c2c2e"; x.beginPath(); x.roundRect(90,y+30,900,22,11); x.fill();
+    if(you!=null){ x.fillStyle="#f4f4f5"; x.beginPath(); x.roundRect(90,y+30,Math.max(22,9*you),22,11); x.fill(); }
+    if(all!=null){ x.fillStyle="#9c9ca3"; x.fillRect(90+9*all-3,y+18,6,46); }
+    y+=180; }
+  x.fillStyle="#9c9ca3"; x.font='400 32px "Instrument Sans", sans-serif'; x.fillText("White bar: me. Grey tick: everyone this week.",90,y-40);
+  x.fillStyle="#1c1c1e"; x.beginPath(); x.roundRect(90,y+20,900,300,24); x.fill();
+  x.fillStyle="#f4f4f5"; x.font='600 64px "IBM Plex Mono", monospace'; x.fillText($("crowd").textContent,130,y+120);
+  x.fillStyle="#9c9ca3"; x.font='400 32px "Instrument Sans", sans-serif'; x.fillText("picks with the crowd",130,y+170);
+  x.fillStyle="#f4f4f5"; x.font='700 44px "Instrument Sans", sans-serif'; x.fillText(($("artist").textContent||"–").slice(0,34),130,y+250);
+  x.fillStyle="#9c9ca3"; x.font='400 32px "Instrument Sans", sans-serif'; x.fillText("the artist I picked most",130,y+295);
+  x.fillStyle="#f4f4f5"; x.font='700 46px "Instrument Sans", sans-serif'; x.fillText("Your turn: holotrackpro.com/duel",90,1760);
+  const blob=await new Promise(r=>c.toBlob(r,"image/png")); const file=new File([blob],"holotrack-art-taste.png",{type:"image/png"});
+  try{ if(navigator.canShare&&navigator.canShare({files:[file]})) return await navigator.share({files:[file],title:"My art taste · HoloTrack",text:"Which card art would you frame? holotrackpro.com/duel"}); }catch(e){ if(e&&e.name==="AbortError") return; }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="holotrack-art-taste.png"; document.body.appendChild(a); a.click(); a.remove();
+}
+$("devid").textContent=DEV.slice(0,12);
+btns.forEach(b=>b.addEventListener("click",()=>pick(b.dataset.side)));
+$("next").addEventListener("click",next);
+$("again").addEventListener("click",start);
+$("share").addEventListener("click",share);
+// removal request: any card this browser has been shown
+$("removeOpen").addEventListener("click",()=>{ const s=$("rmCard"); s.innerHTML=[...seen.values()].map(c=>`<option value="${esc(c.id)}">${esc(c.name||c.id)}</option>`).join("")||'<option value="">Play a pick first, then choose the card here</option>';
+  $("rmMsg").hidden=true; $("rmSend").disabled=!seen.size; $("removeDlg").showModal(); });
+$("rmCancel").addEventListener("click",()=>$("removeDlg").close());
+$("removeForm").addEventListener("submit",async e=>{ e.preventDefault(); const id=$("rmCard").value; if(!id) return;
+  let r="error"; try{ r=await rpc("duel_remove",{p_card:id,p_note:$("rmNote").value}); }catch(x){}
+  const m=$("rmMsg"); m.hidden=false; m.textContent=r==="ok"?"Done — it's out of the pool. Thank you for telling us.":"That didn't go through. Please message @holotrack on Instagram."; $("rmSend").disabled=r==="ok"; });
+start();
+})();
+</script>
+</body>
+</html>
