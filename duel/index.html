@@ -150,12 +150,23 @@ async function start(){
   if(!R||R.error||!R.pairs||!R.pairs.length){ err(R&&R.error==="enough for today"?"That's plenty for today — thank you! Come back tomorrow.":"The duel couldn't start. Please try again in a minute."); return; }
   show();
 }
+let loaded=0, broken=false;
+async function failed(id){
+  // a picture that won't load: tell the pool check, skip this pair without a vote
+  try{ await rpc("duel_image_failed",{p_card:id}); }catch(e){}
+  btns.forEach(b=>b.disabled=true); $("hint").textContent="A picture didn't load — skipping this pair."; 
+  setTimeout(()=>{ $("hint").textContent="Tap the one you'd frame. Prices are hidden: this is about the art."; i++; if(i<R.pairs.length) show(); else result(); },900);
+}
 function show(){
-  const p=R.pairs[i]; picked=false; shown=performance.now();
+  const p=R.pairs[i]; picked=false; loaded=0; broken=false;
   $("step").textContent=`Pick ${i+1} of ${R.pairs.length}`; $("barFill").style.width=(i*100/R.pairs.length)+"%";
   $("q").textContent=QS[i%QS.length]; $("verdict").hidden=true; $("hint").hidden=false;
-  btns.forEach(b=>{ const c=p[b.dataset.side]; seen.set(c.id,c); b.className="pick"; b.disabled=false;
-    b.querySelector(".art").innerHTML=`<img alt="" decoding="async" src="${c.img}">`; b.querySelector(".cap").textContent=""; });
+  btns.forEach(b=>{ const c=p[b.dataset.side]; seen.set(c.id,c); b.className="pick"; b.disabled=true; b.querySelector(".cap").textContent=""; b.querySelector(".art").innerHTML='<span class="mono">Loading</span>';
+    // (23 Nov) the picture and its checked fallbacks in turn; picks open only when both pictures have loaded
+    const srcs=[c.img,...(c.alt||[])].filter(Boolean); let k=0; const im=new Image(); im.alt=""; im.decoding="async";
+    im.onload=()=>{ loaded++; b.querySelector(".art").replaceChildren(im); if(loaded===2&&!broken){ btns.forEach(x=>x.disabled=false); shown=performance.now(); } };
+    im.onerror=()=>{ k++; if(k<srcs.length){ im.src=srcs[k]; return; } broken=true; failed(c.id); };
+    im.src=srcs[0]||""; if(!srcs.length) im.onerror(); });
   // preload the next pair
   const n=R.pairs[i+1]; if(n) [n.left.img,n.right.img].forEach(u=>{ const im=new Image(); im.src=u; });
 }
