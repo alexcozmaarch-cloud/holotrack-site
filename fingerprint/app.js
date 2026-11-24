@@ -484,6 +484,14 @@ async function cmpTable() {
 }
 
 /* ---------- Movers (Build brief 23 Nov) ---------- */
+function fairLine(h) {                                   // lab check 24 Nov: "x % above fair" in fp-up only when above; below in grey
+  if (!h || h.segment === "low" || !h.shown) return "";
+  if (h.held) return `<span class="fl">Fair price under review</span>`;
+  if (h.l == null) return "";
+  const r = Math.exp(h.l);
+  if (h.l > 0) return `<span class="fl up">${r >= 1.5 ? xm(r) + " above fair" : Math.round((r - 1) * 100) + " % above fair"}</span>`;
+  return `<span class="fl">below fair</span>`;
+}
 const MW = { 7: { chg: "chg7", sold: "sold7", floor: 2, weeks: 4 }, 30: { chg: "chg30", sold: "sold30", floor: 4, weeks: 8 }, 90: { chg: "chg90", sold: "sold90", floor: 4, weeks: 13 } };
 const BANDS = [["5-", "5+"], ["all", "All"], ["0-15", "< 15"], ["15-75", "15–75"], ["75-150", "75–150"], ["150-300", "150–300"], ["300-", "300+"]];
 const SERIE = { me: "Mega Evolution", sv: "Scarlet & Violet", swsh: "Sword & Shield", sm: "Sun & Moon", xy: "XY", bw: "Black & White", hgss: "HeartGold SoulSilver", dp: "Diamond & Pearl", pl: "Platinum", ex: "EX", ecard: "e-Card", neo: "Neo", base: "Base", gym: "Gym", col: "Call of Legends", lc: "Legendary Collection", pop: "POP", tk: "Trainer kits", misc: "Other" };
@@ -527,15 +535,27 @@ async function movers() {
     }
   } catch (e) { $("mvList").innerHTML = `<div class="box"><p class="why m">Couldn't load the movers. Try again in a moment.</p></div>`; return; }
   if (FP.tab !== "movers") return;
+  let fair = {}, sum = null;
+  try {
+    if (PREVIEW) { const P = await fetch("preview.json").then(r => r.json()); fair = P.moverFair || {}; sum = P.moverSum || null; }
+    else {
+      const [lo, hi] = M.band === "all" ? [null, null] : M.band.split("-").map(x => x === "" ? null : +x);
+      const [hs, sm] = await Promise.all([
+        q(sb.from("fp_card_header").select("card_id,l,held,segment,shown").in("card_id", rows.map(r => r.card_id))),
+        q(sb.rpc("fp_movers_summary", { win: M.win, serie_: M.serie || null, set_: M.set || null, rar: M.rar || null, lo, hi, fresh: M.fresh }))]);
+      hs.forEach(h => fair[h.card_id] = h); sum = sm[0] || null;
+    }
+  } catch (e) { }
   await loadWeekly(rows.map(r => r.card_id)).catch(() => {});
   if (FP.tab !== "movers") return;
-  $("mvList").innerHTML = rows.length ? `<div class="list">${rows.map(r => { const c = +r[W.chg]; return `<button class="crow" data-id="${esc(r.card_id)}">
+  const top = sum && sum.n_all ? `<p class="mvtop">${(M.dir === "up" ? sum.n_up10 : sum.n_down10).toLocaleString("en-US")} cards ${M.dir === "up" ? "rose" : "fell"} 10\u00a0%+ in ${M.win} days · median ${sum.median >= 0 ? "+" : "−"}${Math.abs(sum.median * 100).toFixed(1)}\u00a0%</p>` : "";
+  $("mvList").innerHTML = top + (rows.length ? `<div class="list">${rows.map(r => { const c = +r[W.chg]; return `<button class="crow" data-id="${esc(r.card_id)}">
       <span class="mini">${miniOf(r.card_id, r.name, W.weeks)}</span>
       <span class="cm"><b>${esc(r.name)}</b><span>${esc(r.set_name || r.set_id)} · ${LOOK[r.look] || esc(r.look)} · ${esc(r.num)}</span>
-      <span class="cv">${chf(+r.market_chf)}<em class="mv">${c > 0 ? "▲ +" : "▼ −"}${Math.abs(c * 100).toFixed(1)} %</em><i>${r[W.sold]} sold in ${M.win} days</i></span></span>
+      <span class="cv">${chf(+r.market_chf)}<em class="mv">${c > 0 ? "▲ +" : "▼ −"}${Math.abs(c * 100).toFixed(1)} %</em><i>${r[W.sold]} sold in ${M.win} days</i></span>${fairLine(fair[r.card_id])}</span>
       <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`; }).join("")}</div>
       <p class="foot">Top ${rows.length}. Sales floor: ${W.floor}+ copies sold in the window. Each fingerprint shows the last ${W.weeks} weeks.</p>`
-    : `<div class="box empty"><p>No card moved this way with enough sales in this window.</p></div>`;
+    : `<div class="box empty"><p>No card moved this way with enough sales in this window.</p></div>`);
   document.querySelectorAll("#mvList .crow").forEach(b => b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); });
 }
 const TABS = {
