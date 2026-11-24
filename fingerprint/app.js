@@ -51,7 +51,7 @@ function spiral(w, { size = 200, r0 = 14, r1 = 94, mini = false } = {}) {
   for (let i = 1; i < n; i++) {
     const m = w.market_chf[i], f = w.fair_chf ? w.fair_chf[i] : null, l = (m && f) ? Math.log(m / f) : null;
     const col = l == null ? "var(--gr-1)" : l > 0 ? "var(--fp-3)" : "var(--gr-2)";
-    const sw = (l == null ? 1.1 : 1.2 + Math.min(Math.abs(l), 2) * 1.3) * (mini ? 0.75 : 1);
+    const sw = (l == null ? 1.1 : 1.2 + Math.min(Math.abs(l), 2) * 1.3) * (mini ? 0.75 : 0.45);
     const s = w.sales ? w.sales[i] : null, strands = s == null || s <= 1 ? 1 : s <= 5 ? 2 : 3;
     const offs = strands === 1 ? [0] : strands === 2 ? [-1.4, 1.4] : [-2, 0, 2];
     let seg = "";
@@ -307,6 +307,108 @@ function flowHighlight(n) {
   svg.querySelectorAll("[data-p]").forEach(e => e.classList.toggle("hl", +e.dataset.p === n));
   svg.querySelectorAll(".hit").forEach(e => e.classList.toggle("hl", +e.dataset.n === n));
 }
+/* ---------- card → Why (spec §3.2): one sentence and a step chart on one log scale ---------- */
+const NAMEL = { 1: "character", 3: "scarcity", 7: "kind", 9: "artist", 10: "card look", 79: "set premium" };
+function whyPane(C) {
+  const h = C.h;
+  if (h.held) return `<div class="box"><p class="why">Fair price under review — the steps come back once the guard clears.</p></div>`;
+  const steps = C.parts.filter(p => !p.no_effect).sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
+  const base = h.typical_base_chf, fair = h.fair_chf, m = h.market_chf;
+  if (!base || !fair) return `<div class="box"><p class="why">No fair price for this card yet.</p></div>`;
+  const prod = fair / base, names = steps.map(p => NAMEL[p.n] || p.name.toLowerCase());
+  const list = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names.at(-1) : names[0] || "Nothing";
+  let s2;
+  if (m > h.band50_hi) s2 = `The market pays ${xm(m / fair)} more: priced by something the model doesn't count yet.`;
+  else if (m < h.band50_lo) s2 = `The market pays less (${xm(m / fair)} of it): priced by something the model doesn't count yet.`;
+  else s2 = `The market, ${chf(m)}, sits inside the middle half of similar cards.`;
+  const s1 = `Start from the ${esc(h.typical_label || "typical card")} at ${chf(base)}. ${list.charAt(0).toUpperCase() + list.slice(1)} take${names.length === 1 ? "s" : ""} it ${xm(prod)} to a fair price of ${chf(fair)}.`;
+  // step chart
+  const W = 340, RH = 44, L = 8, Rt = W - 70, rows = [];
+  let run = base;
+  rows.push({ label: h.typical_label ? "Typical card" : "Typical", from: base, to: base, dot: true, txt: chf(base) });
+  for (const p of steps) { const to = run * Math.exp(p.contribution); rows.push({ label: p.name, from: run, to, up: p.contribution > 0, txt: xm(Math.exp(p.contribution)), run: chf(to) }); run = to; }
+  rows.push({ label: "Fair price", from: fair, to: fair, fair: true, txt: chf(fair) });
+  rows.push({ label: "Market", from: fair, to: m, mkt: true, up: m > fair, txt: chf(m) });
+  const vals = rows.flatMap(r => [r.from, r.to]).concat([h.band50_lo, h.band50_hi]).filter(v => v > 0);
+  const lo = Math.log(Math.min(...vals)) - .15, hi = Math.log(Math.max(...vals)) + .15, X = v => L + (Rt - L) * (Math.log(v) - lo) / (hi - lo);
+  const H = rows.length * RH + 8;
+  const svg = rows.map((r, i) => {
+    const y = 8 + i * RH, by = y + 24;
+    let g = `<text class="wl" x="${L}" y="${y + 12}">${esc(r.label)}</text><text class="wv ${r.up && !r.mkt ? "up" : ""}" x="${W}" y="${y + 12}" text-anchor="end">${esc(r.txt)}</text>`;
+    if (r.run) g += `<text class="wr" x="${W}" y="${by + 4}" text-anchor="end">${esc(r.run)}</text>`;
+    if (r.dot) g += `<circle cx="${X(r.from)}" cy="${by}" r="4" class="wdot"/>`;
+    else if (r.fair) g += `<rect x="${X(h.band50_lo)}" y="${by - 5}" width="${X(h.band50_hi) - X(h.band50_lo)}" height="10" rx="5" class="wband"/><line x1="${X(fair)}" x2="${X(fair)}" y1="${by - 8}" y2="${by + 8}" class="wtick"/>`;
+    else { const a = Math.min(X(r.from), X(r.to)), b = Math.max(X(r.from), X(r.to));
+      g += `<rect x="${a}" y="${by - 4}" width="${Math.max(2, b - a)}" height="8" rx="4" class="${r.mkt ? (r.up ? "wmkt up" : "wmkt") : r.up ? "wup" : "wdn"}"/>`; }
+    return g;
+  }).join("");
+  return `<div class="box"><p class="why">${s1}</p><p class="why m">${s2}</p>
+    <svg class="wchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Steps from the typical card to the fair price and the market, one log scale">${svg}</svg>
+    <p class="note">One scale for every row (each step is a multiple). Grey band on the fair-price row: half of similar cards (${chf(h.band50_lo)}–${chf(h.band50_hi)}).</p></div>`;
+}
+
+/* ---------- card → History (spec §3.3): the fingerprint with a scrubber and event dots ---------- */
+const MEDIA = new Set(["P37", "P66", "P69"]);
+function eventLabel(e) {
+  if (e.scope === "character" && MEDIA.has(e.n)) return `Featured in ${e.label}: cards of this Pokémon moved +3 % against similar cards in the 13 weeks after past events like this (10 events, 2024–26)`;
+  if (e.n === "P38") return `${e.label}. After Worlds, cards of the Pokémon in the top-8 decks fell −5 % against similar cards over 13 weeks (3 events, 2 of 3 the same way)`;
+  if (e.n === "P36") return `${e.label}: not tested yet`;
+  return `${e.label}: no measurable move on prices`;
+}
+async function loadHist(C) {
+  const id = C.h.card_id;
+  await loadWeekly([id]).catch(() => {});
+  if (!C.events) {
+    if (PREVIEW) C.events = ((await fetch("preview.json").then(r => r.json())).events || []);
+    else {
+      const ors = [`scope.eq.all`, `and(scope.eq.set,scope_id.eq.${C.h.set_id})`, `and(scope.eq.card,scope_id.eq.${id})`];
+      if (C.h.character) ors.push(`and(scope.eq.character,scope_id.eq."${C.h.character.replace(/"/g, "")}")`);
+      C.events = await q(sb.from("fp_events").select("id,day,n,label,scope,scope_id,phase").neq("n", "P32").or(ors.join(","))).catch(() => []);
+    }
+  }
+}
+function histPane(C) {
+  const h = C.h, w = FP.weekly[h.card_id];
+  if (!w || !w.weeks || w.weeks.length < 2) return `<div class="box"><div class="empty" style="padding:20px 8px"><b>No history yet</b><p>HoloTrack has not exported ${esc(h.name)}'s weekly line. Today's figures are real; the spiral appears once the weekly file arrives.</p></div></div>`;
+  const low = h.segment === "low";
+  const ww = low ? { ...w, fair_chf: w.weeks.map(() => null) } : w;
+  const t = w.weeks.map(d => Date.parse(d + "T00:00:00Z")), t0 = Math.min(t[0], T0), span = Math.max(1, t.at(-1) - t0);
+  const pos = ms => { const a = 2 * Math.PI * (ms - T0) / MONTH - Math.PI / 2, f = Math.max(0, (ms - t0) / span), r = 14 + 80 * f; return [100 + r * Math.cos(a), 100 + r * Math.sin(a)]; };
+  const evs = (C.events || []).filter(e => { const ms = Date.parse(e.day + "T00:00:00Z"); return ms >= t[0] && ms <= t.at(-1); });
+  const dots = evs.map((e, i) => { const [x, y] = pos(Date.parse(e.day + "T00:00:00Z")); return `<circle class="ev" data-e="${i}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2"><title>${esc(e.label)}</title></circle>`; }).join("");
+  C._hist = { w, t, pos, evs, low };
+  return `<div class="box ringbox"><div class="ro"><span class="d" id="ro-d"></span><span class="g" id="ro-g"></span><span class="m" id="ro-m"></span><span class="s" id="ro-s"></span></div>
+    <svg class="fp big" id="fpbig" viewBox="-4 -4 208 208" role="img" aria-label="Fingerprint of ${esc(h.name)}: one spiral turn per month since March 2024${low ? ", grey throughout: low-tier cards have no fair price" : ", orange where the market sat above the fair price"}">${spiral(ww)}<g class="evs">${dots}</g><circle id="mkr" r="4.5" class="mkr"/></svg>
+    <input type="range" id="scrub" min="0" max="${w.weeks.length - 1}" value="${w.weeks.length - 1}" aria-label="Week">
+    <p class="hint">Drag along the spiral or the slider · tap a dot for its event · one turn per month · ${low ? "grey throughout: low-tier cards have no fair price" : "orange = above fair price"}</p>
+    <p class="evl" id="evl" hidden></p></div>`;
+}
+function histWeek(i) {
+  const H = FP.card && FP.card._hist; if (!H) return;
+  const { w, t, pos, low } = H, m = w.market_chf[i], f = low ? null : (w.fair_chf || [])[i], s = (w.sales || [])[i];
+  const [x, y] = pos(t[i]); const mk = $("mkr"); if (mk) { mk.setAttribute("cx", x.toFixed(1)); mk.setAttribute("cy", y.toFixed(1)); }
+  $("scrub").value = i;
+  $("ro-d").textContent = "Week of " + new Date(t[i]).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  $("ro-m").textContent = chf(m);
+  const g = f ? gap(Math.log(m / f)) : null;
+  $("ro-g").innerHTML = g ? `<span class="${g.cls}">${g.txt}</span> fair` : "";
+  $("ro-s").textContent = low ? `low tier · no fair price${s != null ? ` · ${s} sales that week` : ""}`
+    : (f ? `fair ${chf(f)}` : "no fair price yet (before the first refit)") + " · " + (s != null ? `${s} sale${s === 1 ? "" : "s"} that week` : "sales not counted yet");
+}
+function histWire() {
+  const H = FP.card && FP.card._hist, svg = $("fpbig"); if (!H || !svg) return;
+  histWeek(H.w.weeks.length - 1);
+  $("scrub").oninput = e => histWeek(+e.target.value);
+  const near = ev => { const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; const q2 = p.matrixTransform(svg.getScreenCTM().inverse());
+    let bi = 0, bd = 1e9; H.t.forEach((ms, i) => { const [x, y] = H.pos(ms), d = (x - q2.x) ** 2 + (y - q2.y) ** 2; if (d < bd) { bd = d; bi = i; } }); return bi; };
+  let drag = false;
+  svg.addEventListener("pointerdown", ev => { if (ev.target.classList.contains("ev")) return; drag = true; svg.setPointerCapture(ev.pointerId); histWeek(near(ev)); });
+  svg.addEventListener("pointermove", ev => { if (drag) histWeek(near(ev)); });
+  svg.addEventListener("pointerup", () => { drag = false; });
+  svg.querySelectorAll(".ev").forEach(d => d.onclick = () => { const e = H.evs[+d.dataset.e], el = $("evl");
+    el.hidden = false; el.innerHTML = `<b>${new Date(e.day).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</b> · ${esc(eventLabel(e))}`;
+    const ms = Date.parse(e.day + "T00:00:00Z"); let i = H.t.findIndex(x => x >= ms); if (i < 0) i = H.t.length - 1; histWeek(i); });
+}
 async function card(id) {
   FP.tab = "collection";
   $("view").innerHTML = `<div class="top"><button id="back">‹ Collection</button><span class="private">PRIVATE</span></div><h1>…</h1>`;
@@ -317,10 +419,18 @@ async function card(id) {
   FP.card = C; const h = C.h;
   $("view").innerHTML = `<div class="top"><button id="back">‹ Collection</button><span class="private">PRIVATE</span></div>
     <h1 class="cardt">${esc(h.name)}</h1><p class="sub">${esc(h.set_name || h.set_id)} · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
-    <div class="segc" role="tablist"><button role="tab" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" aria-selected="false" disabled>Why</button>`}<button role="tab" aria-selected="false" disabled>History</button></div>
+    <div class="segc" role="tablist"><button role="tab" data-p="today" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" data-p="why" aria-selected="false">Why</button>`}<button role="tab" data-p="hist" aria-selected="false">History</button></div>
     ${headerBox(h)}
-    <div class="box flowbox">${flowSvg(C, T)}<p class="hint">Tap a string or a name, or pick from the list below</p></div>
-    ${plist(C, T)}`;
+    <div id="p-today"><div class="box flowbox">${flowSvg(C, T)}<p class="hint">Tap a string or a name, or pick from the list below</p></div>
+    ${plist(C, T)}</div><div id="p-why" hidden>${h.segment === "low" ? "" : whyPane(C)}</div><div id="p-hist" hidden></div>`;
+  document.querySelectorAll(".segc [data-p]").forEach(b => b.onclick = async () => {
+    const t = b.dataset.p;
+    document.querySelectorAll(".segc [data-p]").forEach(x => x.setAttribute("aria-selected", x === b));
+    ["today", "why", "hist"].forEach(x => { const el = $("p-" + x); if (el) el.hidden = x !== t; });
+    if (t === "hist" && !$("p-hist").dataset.done) { $("p-hist").innerHTML = `<div class="box"><p class="why m">Loading…</p></div>`; await loadHist(C);
+      $("p-hist").innerHTML = histPane(C); $("p-hist").dataset.done = 1; histWire(); }
+  });
+  if (FP.openTab) { const b = document.querySelector(`.segc [data-p="${FP.openTab}"]`); FP.openTab = null; if (b) b.click(); }
   $("back").onclick = () => { location.hash = "collection"; };
   document.querySelectorAll(".pr, .hit").forEach(b => b.onclick = () => sheet(+b.dataset.n));
   document.querySelectorAll(".more").forEach(b => b.onclick = () => { b.previousElementSibling.hidden = false; b.remove(); });

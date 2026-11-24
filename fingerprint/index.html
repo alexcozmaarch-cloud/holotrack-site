@@ -140,6 +140,24 @@ svg.flow.dim [data-p].hl{opacity:1;stroke-width:1.6px}
 svg.flow.dim .hair.hl{stroke:var(--ink);opacity:.9}
 .hint{font-size:12px;color:var(--muted);text-align:center;margin:4px 0 2px}
 .pv .nw{white-space:nowrap}
+/* why + history (spec §3.2, §3.3) */
+.why{margin:0 0 8px;font-size:15px;line-height:1.45}.why.m{color:var(--muted)}
+.wchart{width:100%;height:auto;display:block;margin-top:8px}
+.wchart .wl{font-size:12px;fill:var(--ink)}.wchart .wv{font:600 12px var(--mono);fill:var(--muted)}.wchart .wv.up{fill:var(--fp-up)}
+.wchart .wr{font:400 10px var(--mono);fill:var(--muted)}
+.wchart .wdot{fill:var(--ink)}.wchart .wup{fill:var(--fp-3)}.wchart .wdn{fill:var(--gr-2)}
+.wchart .wband{fill:var(--gr-1)}.wchart .wtick{stroke:var(--ink);stroke-width:2}
+.wchart .wmkt{fill:var(--gr-2)}.wchart .wmkt.up{fill:var(--fp-1)}
+.note{margin:8px 0 0;font-size:12px;line-height:1.4;color:var(--muted)}
+.ringbox svg.fp.big{width:100%;height:auto;display:block;touch-action:none;cursor:crosshair}
+.ro{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-variant-numeric:tabular-nums;margin-bottom:6px}
+.ro .d{font-size:13px;color:var(--muted)}.ro .g{font-size:17px;font-weight:700;text-align:right;grid-row:span 2;align-self:center}
+.ro .m{font-size:22px;font-weight:700}.ro .s{grid-column:1/-1;font-size:13px;color:var(--muted)}
+.ro .up{color:var(--fp-up)}.ro .dn{color:var(--muted)}
+input[type=range]{width:100%;margin:10px 0 0;accent-color:var(--ink);min-height:30px}
+svg.fp .ev{fill:var(--ink);stroke:var(--card);stroke-width:1.2;cursor:pointer}
+svg.fp .mkr{fill:none;stroke:var(--ink);stroke-width:2}
+.evl{margin:8px 0 0;font-size:13px;line-height:1.45;color:var(--muted)}.evl b{color:var(--ink)}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
