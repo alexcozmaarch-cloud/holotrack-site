@@ -138,7 +138,7 @@ async function texts() {
 }
 const pct = (k, d = 0) => { const v = (Math.exp(k) - 1) * 100; return (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d) + " %"; };
 function besideText(n, b, h) {
-  if (n === 21 && b && b.detail) return `${pct(b.detail.k4)} in 4 weeks · ${pct(b.detail.k8)} in 8 · ${pct(b.detail.k26)} in 26`;
+  if (n === 21 && b && b.detail) return `${pct(b.detail.k4)} in 4 weeks · ${pct(b.detail.k8)} in 8 · ${pct(b.detail.k26)} in 26`;   // rows keep each part on one line (.pv span)
   if (n === 22 && b && b.value != null) return `${Math.round(b.value * 100)} % below its 52-week high`;
   if (n === 23 && b && b.value != null) return `${pct(Math.log(1 + b.value))} against its own last 12 months`;
   if (n === 24 && h.l != null && h.segment !== "low") { const g = gap(h.l); return `${g.txt} ${h.l > 0 ? "above" : "below"} fair`; }
@@ -184,7 +184,7 @@ function plist(C, T) {
     else if (t.status === "event") events.push([t, "dots on the fingerprint", "m"]);
     else notyet.push([t, t.status === "copy" ? "your copy" : t.status === "empty" ? "empty" : "observed", "m"]);
   }
-  const row = ([t, v, cls]) => `<button class="pr" data-n="${t.n}"><span>${esc(t.name)}<i>P${t.n}</i></span><span class="pv ${cls}">${esc(v)}</span></button>`;
+  const row = ([t, v, cls]) => `<button class="pr" data-n="${t.n}"><span>${esc(t.name)}<i>P${t.n}</i></span><span class="pv ${cls}">${String(v).split(" · ").map(x => `<span class="nw">${esc(x)}</span>`).join(" · ")}</span></button>`;
   const grp = (title, rows, fold) => rows.length ? `<div class="pg"><div class="pgh">${title} · ${rows.length}</div>${fold ? `<div class="fold" hidden>${rows.map(row).join("")}</div><button class="more">Show all ${rows.length}</button>` : rows.map(row).join("")}</div>` : "";
   FP.order = [...counted, ...beside, ...events, ...notyet].map(([t]) => t.n);
   return `<div class="box plist">${grp("Counted in the fair price", counted)}${grp("Beside the price", beside)}${grp("Events", events)}${grp("Not yet counted", notyet, true)}</div>`;
@@ -210,14 +210,103 @@ function sheet(n) {
     ${t.what ? `<h3>What it is</h3><p>${esc(t.what)}</p>` : ""}${t.how ? `<h3>How it's measured</h3><p>${esc(t.how)}</p>` : ""}
     ${t.low_note ? `<h3>Low</h3><p>${esc(t.low_note)}</p>` : ""}${t.high_note ? `<h3>High</h3><p>${esc(t.high_note)}</p>` : ""}
     <div class="snav">${prev != null ? `<button data-go="${prev}">‹ Previous</button>` : "<span></span>"}${next != null ? `<button data-go="${next}">Next ›</button>` : ""}</div>`;
-  $("sheet").classList.add("on"); $("scrim").classList.add("on"); $("sheet").scrollTop = 0;
+  $("sheet").classList.add("on"); $("scrim").classList.add("on"); $("sheet").scrollTop = 0; flowHighlight(n);
   $("sdone").onclick = closeSheet; $("sheet").querySelectorAll("[data-go]").forEach(b => b.onclick = () => sheet(+b.dataset.go));
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
 document.addEventListener("click", e => { if (e.target && e.target.id === "scrim") closeSheet(); });
 (() => { let y0 = null; document.addEventListener("touchstart", e => { const s = $("sheet"); y0 = s && s.contains(e.target) && s.scrollTop <= 0 ? e.touches[0].clientY : null; }, { passive: true });
   document.addEventListener("touchend", e => { if (y0 != null && e.changedTouches[0].clientY - y0 > 80) closeSheet(); y0 = null; }, { passive: true }); })();
-function closeSheet() { $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); }
+function closeSheet() { $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); flowHighlight(null); }
+/* ---------- card → Today: the flow (spec §3.1) — parameters on the upper arc, the sieve on the diameter, the result below ---------- */
+const FAM = ["context", "identity", "state", "lyrical", "copy"];          // left → right; Identity and State drawn large
+const FAMW = { identity: .5, state: .22, context: .1, lyrical: .09, copy: .09 };
+const FAMN = { identity: "Identity", state: "State", context: "Context", lyrical: "Lyrical", copy: "Copy" };
+const STR = [];                                                              // counted strings that sway (middles only)
+function flowSvg(C, T) {
+  const h = C.h, low = h.segment === "low", cx = 190, sy = 228, R = 172, Rr = 150;
+  const parts = Object.fromEntries(C.parts.map(p => [p.n, p]));
+  const byF = Object.fromEntries(FAM.map(f => [f, T.filter(t => (t.family || "").toLowerCase() === f).sort((a, b) => a.n - b.n)]));
+  const gap = 0.035, span = Math.PI - gap * (FAM.length + 1);
+  let a = Math.PI + gap, out = "", hits = "", fam = "", ids = [];
+  const P = (ang, r) => [cx + r * Math.cos(ang), sy + r * Math.sin(ang)];
+  const strings = [];
+  const counted = C.parts.filter(p => !low && !p.no_effect).sort((x, y) => Math.abs(y.contribution) - Math.abs(x.contribution));
+  const totStr = counted.reduce((s, p) => s + Math.max(1, Math.round(Math.abs(p.contribution) / 0.02)), 0);
+  let k = 0;                                                                 // running string index → its x on the sieve
+  for (const f of FAM) {
+    const list = byF[f]; if (!list.length) continue;
+    const fs = span * FAMW[f], a0 = a;
+    const nS = t => { const p = parts[t.n]; return p && !low && !p.no_effect ? Math.max(1, Math.round(Math.abs(p.contribution) / 0.02)) : 0; };
+    const wts = list.map(t => 1 + nS(t) * 0.35), wsum = wts.reduce((x, y) => x + y, 0);   // counted parameters get room for their strings
+    const st = []; let acc = 0; for (const x of wts) { st.push(a0 + fs * acc / wsum); acc += x; }
+    const sw = i => fs * wts[i] / wsum;
+    const [x0, y0] = P(a0, R + 1), [x1, y1] = P(a0 + fs, R + 1);
+    fam += `<path d="M${x0.toFixed(1)},${y0.toFixed(1)} A${R + 1},${R + 1} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)}" style="fill:none;stroke:var(--ink);stroke-width:${f === "identity" || f === "state" ? 3 : 2}px"/>`;
+    const [lx0, ly0] = P(a0, R + 12), [lx1, ly1] = P(a0 + fs, R + 12);
+    fam += `<path id="fl-${f}" d="M${lx0.toFixed(1)},${ly0.toFixed(1)} A${R + 12},${R + 12} 0 0 1 ${lx1.toFixed(1)},${ly1.toFixed(1)}" fill="none"/>
+      <text class="fam ${f === "identity" || f === "state" ? "" : "sm"}"><textPath href="#fl-${f}" startOffset="50%" text-anchor="middle">${FAMN[f].toUpperCase()}</textPath></text>`;
+    list.forEach((t, i) => {
+      const am = st[i] + sw(i) / 2, p = parts[t.n], isC = p && !low && !p.no_effect;
+      const [hx0, hy0] = P(st[i], R + 22), [hx1, hy1] = P(st[i] + sw(i), R + 22);
+      hits += `<path class="hit" data-n="${t.n}" d="M${cx},${sy} L${hx0.toFixed(1)},${hy0.toFixed(1)} A${R + 22},${R + 22} 0 0 1 ${hx1.toFixed(1)},${hy1.toFixed(1)} Z"><title>${esc(t.name)}</title></path>`;
+      if (!isC) {                                                            // grey hairline to the sieve
+        const [px, py] = P(am, R), hx = cx + (px - cx) * .82;
+        out += `<path data-p="${t.n}" class="hair" d="M${px.toFixed(1)},${py.toFixed(1)} C${px.toFixed(1)},${(py + (sy - py) * .6).toFixed(1)} ${hx.toFixed(1)},${(sy - 14).toFixed(1)} ${hx.toFixed(1)},${sy}"/>`;
+        return;
+      }
+      const n = Math.max(1, Math.round(Math.abs(p.contribution) / 0.02)), up = p.contribution > 0;
+      for (let j = 0; j < n; j++) {
+        const aj = st[i] + sw(i) * (0.08 + 0.84 * (n === 1 ? .5 : j / (n - 1)));
+        const [px, py] = P(aj, R), kk = counted.indexOf(p);
+        strings.push({ n: t.n, px, py, up, j, kk });
+      }
+    });
+    a += fs + gap;
+  }
+  // strings: order on the sieve follows the arc; landing on the lower result arc
+  strings.sort((s1, s2) => s1.px - s2.px);
+  const w = 250, sx0 = cx - w / 2;
+  strings.forEach((s, i) => {
+    const hx = sx0 + w * (strings.length === 1 ? .5 : i / (strings.length - 1));
+    const la = Math.PI * (0.18 + 0.64 * (strings.length === 1 ? .5 : i / (strings.length - 1)));
+    const lx = cx - Rr * Math.cos(la) * .72, ly = sy + 40 + Rr * Math.sin(la) * .95;
+    s.hx = hx; s.lx = lx; s.ly = ly;
+    const col = s.up ? "var(--fp-3)" : "var(--fp-2)", op = s.up ? .95 : .6;
+    out += `<path data-p="${s.n}" class="str" style="stroke:${col}" opacity="${op}" d="${strD(s, 0)}"/>`;
+    if (!low) out += `<path data-p="${s.n}" class="str2" style="stroke:${col}" opacity="${op * .8}" d="M${hx.toFixed(1)},${sy} C${hx.toFixed(1)},${sy + 50} ${lx.toFixed(1)},${(ly - 50).toFixed(1)} ${lx.toFixed(1)},${ly.toFixed(1)}"/>`;
+  });
+  STR.length = 0; strings.forEach(s => STR.push(s));
+  const sieve = `<line x1="${cx - R}" y1="${sy}" x2="${cx + R}" y2="${sy}" class="sieve"/>` +
+    Array.from({ length: 35 }, (_, i) => { const x = cx - R + i * (2 * R / 34); return `<line x1="${x.toFixed(1)}" y1="${sy - 3}" x2="${x.toFixed(1)}" y2="${sy + 3}" class="tick"/>`; }).join("");
+  const sum = C.parts.reduce((s, p) => s + (p.contribution || 0), 0);
+  const [r0x, r0y] = [cx - Rr * .78, sy + 40 + Rr * .55], [r1x, r1y] = [cx + Rr * .78, sy + 40 + Rr * .55];
+  const res = low ? "NO FAIR PRICE · LOW TIER" : `RESULT ${xm(Math.exp(sum))} → FAIR ${h.fair_chf ? Math.round(h.fair_chf).toLocaleString("en-US") : "—"}`;
+  const resArc = `<path id="fl-res" d="M${r0x.toFixed(1)},${r0y.toFixed(1)} A${Rr},${Rr * .9} 0 0 0 ${r1x.toFixed(1)},${r1y.toFixed(1)}" class="${low ? "resl" : "resa"}"/>
+    <path id="fl-rest" d="M${(r0x - 6).toFixed(1)},${(r0y + 14).toFixed(1)} A${Rr + 10},${(Rr + 10) * .9} 0 0 0 ${(r1x + 6).toFixed(1)},${(r1y + 14).toFixed(1)}" fill="none"/>
+    <text class="res ${low ? "" : "on"}"><textPath href="#fl-rest" startOffset="50%" text-anchor="middle">${res}</textPath></text>`;
+  const aria = low ? `Flow of ${h.name}: every parameter stops at the sieve; low-tier cards have no fair price.`
+    : `Flow of ${h.name}, read top to bottom: ${T.length} parameters on the upper arc, a sieve on the diameter, the result on the lower arc. ${counted.length} counted parameters pass, together ${xm(Math.exp(sum))}.`;
+  return `<svg class="flow" viewBox="-14 -4 408 ${low ? 300 : 470}" role="img" aria-label="${esc(aria)}"><g class="fams">${fam}</g><g class="ss">${out}</g>${sieve}${low ? "" : resArc}${low ? `<text class="res" x="${cx}" y="${sy + 34}" text-anchor="middle">${res}</text>` : ""}<g class="hits">${hits}</g></svg>`;
+}
+function strD(s, d) {
+  const my = s.py + (228 - s.py) * .55;
+  return `M${s.px.toFixed(1)},${s.py.toFixed(1)} C${(s.px + d).toFixed(1)},${my.toFixed(1)} ${(s.hx + d).toFixed(1)},${(228 - 16).toFixed(1)} ${s.hx.toFixed(1)},228`;
+}
+function swayFrame(ms) {                                                     // string ends fixed, middles sway ±3 pt at the card's pace
+  if (!REDUCE.matches && FP.card && document.querySelector("svg.flow")) {
+    const per = period(FP.card.h.sales_4w), els = document.querySelectorAll("svg.flow path.str");
+    els.forEach((el, i) => { const s = STR[i]; if (!s) return; const d = 3 * Math.sin(2 * Math.PI * (ms / 1000) / per + i * .07); el.setAttribute("d", strD(s, d)); });
+  }
+  requestAnimationFrame(swayFrame);
+}
+requestAnimationFrame(swayFrame);
+function flowHighlight(n) {
+  const svg = document.querySelector("svg.flow"); if (!svg) return;
+  svg.classList.toggle("dim", n != null);
+  svg.querySelectorAll("[data-p]").forEach(e => e.classList.toggle("hl", +e.dataset.p === n));
+  svg.querySelectorAll(".hit").forEach(e => e.classList.toggle("hl", +e.dataset.n === n));
+}
 async function card(id) {
   FP.tab = "collection";
   $("view").innerHTML = `<div class="top"><button id="back">‹ Collection</button><span class="private">PRIVATE</span></div><h1>…</h1>`;
@@ -230,10 +319,10 @@ async function card(id) {
     <h1 class="cardt">${esc(h.name)}</h1><p class="sub">${esc(h.set_name || h.set_id)} · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
     <div class="segc" role="tablist"><button role="tab" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" aria-selected="false" disabled>Why</button>`}<button role="tab" aria-selected="false" disabled>History</button></div>
     ${headerBox(h)}
-    <div class="box flowph"><p>The flow (every parameter on one arc) comes in the next build. Tap a row below to read a parameter.</p></div>
+    <div class="box flowbox">${flowSvg(C, T)}<p class="hint">Tap a string or a name, or pick from the list below</p></div>
     ${plist(C, T)}`;
   $("back").onclick = () => { location.hash = "collection"; };
-  document.querySelectorAll(".pr").forEach(b => b.onclick = () => sheet(+b.dataset.n));
+  document.querySelectorAll(".pr, .hit").forEach(b => b.onclick = () => sheet(+b.dataset.n));
   document.querySelectorAll(".more").forEach(b => b.onclick = () => { b.previousElementSibling.hidden = false; b.remove(); });
 }
 const TABS = {

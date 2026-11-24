@@ -121,6 +121,25 @@ em.up,b.up{color:var(--fp-up)}
 .on .big{display:block;font-size:28px;margin:4px 0}
 .snav{display:flex;justify-content:space-between;margin-top:18px}
 .snav button{all:unset;cursor:pointer;font-size:15px;font-weight:600;min-height:44px;display:flex;align-items:center}
+/* flow (spec §3.1) */
+.flowbox{padding:8px 4px 6px}
+svg.flow{width:100%;height:auto;display:block;overflow:visible}
+svg.flow .hair{fill:none;stroke:var(--muted);stroke-width:.6px;opacity:.28}
+svg.flow .str,svg.flow .str2{fill:none;stroke-width:.9px}
+svg.flow .sieve{stroke:var(--ink);stroke-width:1.2px}
+svg.flow .tick{stroke:var(--muted);stroke-width:.7px}
+svg.flow .fam{font:600 10px var(--mono);letter-spacing:.12em;fill:var(--ink)}
+svg.flow .fam.sm{font-size:8px;fill:var(--muted)}
+svg.flow .res{font:600 11px var(--mono);letter-spacing:.1em;fill:var(--muted)}
+svg.flow .res.on{fill:var(--fp-up)}
+svg.flow .resa{fill:none;stroke:var(--fp-3);stroke-width:3px}
+svg.flow .hit{fill:transparent;cursor:pointer}
+svg.flow .hit.hl{fill:var(--ink);fill-opacity:.05}
+svg.flow.dim [data-p]{opacity:.12}
+svg.flow.dim [data-p].hl{opacity:1;stroke-width:1.6px}
+svg.flow.dim .hair.hl{stroke:var(--ink);opacity:.9}
+.hint{font-size:12px;color:var(--muted);text-align:center;margin:4px 0 2px}
+.pv .nw{white-space:nowrap}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
