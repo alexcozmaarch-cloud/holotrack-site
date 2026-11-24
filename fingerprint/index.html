@@ -51,6 +51,22 @@ h1{margin:6px 0 2px;font-size:34px;line-height:41px;font-weight:700;letter-spaci
 .top{display:flex;justify-content:space-between;align-items:center;min-height:44px}
 .top button{all:unset;cursor:pointer;font-size:15px;color:var(--muted);min-height:44px;display:flex;align-items:center}
 .private{font:500 11px var(--mono);letter-spacing:.06em;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:3px 9px}
+/* collection (spec §2) */
+.list{background:var(--card);border-radius:12px;overflow:hidden}
+.crow{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:64px minmax(0,1fr) 8px;gap:12px;align-items:center;padding:10px 14px 10px 10px;border-bottom:.5px solid var(--rule);min-height:84px}
+.crow:last-child{border-bottom:0}
+.crow:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.mini svg{width:64px;height:64px;display:block}
+.cm{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cm b{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cm>span{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cv{font-size:15px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.cv em{font-style:normal;font-weight:700;margin-left:6px}
+em.up{color:var(--fp-up)}em.dn{color:var(--muted)}
+.cv i{font-style:normal;color:var(--muted);font-size:13px;margin-left:6px}
+.chev{width:8px;height:14px;stroke:var(--rule);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.foot{margin:12px 4px 0;font-size:13px;line-height:1.4;color:var(--muted)}
+.none{font:500 9px var(--mono);fill:var(--muted);letter-spacing:.04em}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
@@ -79,57 +95,6 @@ h1{margin:6px 0 2px;font-size:34px;line-height:41px;font-weight:700;letter-spaci
   </nav>
 </div>
 
-<script>
-const SUPABASE_URL = "https://uhkvzsjaavcbawuhvrkz.supabase.co";
-const SUPABASE_KEY = "sb_publishable_ny_oW8k07iVbf2I-WiaORw_wbS83Jid";   // publishable: safe in a page; every fp_ view checks the allow-list
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { storageKey: "fp-auth" } });
-const $ = id => document.getElementById(id);
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-const FP = { tab: "collection" };
-
-const TABS = {
-  collection: () => `<div class="top"><span class="label">Fingerprint</span><span class="private">PRIVATE</span></div>
-    <h1>Collection</h1><p class="sub" id="csub">0 cards</p>
-    <div class="box empty">
-      <svg class="ring" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--gr-2)" stroke-width="1.5" stroke-dasharray="2 4"/></svg>
-      <p>Your cards appear here with their fingerprints.</p></div>`,
-  movers: () => `<div class="top"><span class="label">Fingerprint</span><span class="private">PRIVATE</span></div>
-    <h1>Movers</h1><p class="sub">Rising and falling cards over 7, 30 and 90 days.</p>
-    <div class="box empty"><p>Coming in a later build.</p></div>`,
-  compare: () => `<div class="top"><span class="label">Fingerprint</span><span class="private">PRIVATE</span></div>
-    <h1>Compare</h1><p class="sub">Two cards side by side.</p>
-    <div class="box empty"><p>Coming in a later build.</p></div>`,
-};
-
-function route() {
-  const t = (location.hash || "").replace(/^#/, "");
-  FP.tab = TABS[t] ? t : "collection";
-  $("view").innerHTML = TABS[FP.tab]();
-  document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-current", b.dataset.tab === FP.tab ? "page" : "false"));
-  window.scrollTo(0, 0);
-}
-document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { location.hash = b.dataset.tab; });
-window.addEventListener("hashchange", route);
-
-const PREVIEW = /^(localhost|127\.)/.test(location.hostname) && /[?&]preview\b/.test(location.search);   // local screenshots only: no data without sign-in
-async function start() {
-  if (PREVIEW) { $("gate").hidden = true; $("app").hidden = false; route(); return; }
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) { $("gate").hidden = false; $("app").hidden = true; return; }
-  const { data: ok, error } = await sb.rpc("fp_allowed");
-  if (error || !ok) {
-    $("gate").hidden = false; $("app").hidden = true;
-    $("msg").textContent = "This preview is private. Your account isn't on the list."; await sb.auth.signOut(); return;
-  }
-  $("gate").hidden = true; $("app").hidden = false; route();
-}
-$("f").onsubmit = async e => {
-  e.preventDefault(); $("msg").textContent = "Signing in…";
-  const { error } = await sb.auth.signInWithPassword({ email: $("em").value.trim(), password: $("pw").value });
-  if (error) { $("msg").textContent = "That didn't work. Check the e-mail and password."; return; }
-  $("msg").textContent = ""; start();
-};
-start();
-</script>
+<script src="app.js"></script>
 </body>
 </html>
