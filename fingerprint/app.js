@@ -121,11 +121,120 @@ async function collection() {
     b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); };
   });
 }
-function card(id) {
-  const r = (FP.rows || []).find(x => x.card_id === id);
-  $("view").innerHTML = `<div class="top"><button onclick="history.back()">‹ Collection</button><span class="private">PRIVATE</span></div>
-    <h1>${esc(r ? r.name : id)}</h1><p class="sub">${r ? `${esc(r.set_name || r.set_id)} · ${LOOK[r.look] || esc(r.look)} · ${esc(r.num)}` : ""}</p>
-    <div class="box empty"><p>The card view (Today · Why · History) comes in the next build.</p></div>`;
+/* ---------- card → Today (spec §3.1, §4) ---------- */
+const COUNTED = s => /^counted/.test(s || "");
+async function loadCard(id) {
+  if (PREVIEW) { const P = await fetch("preview.json").then(r => r.json()); return P.cards[id] || null; }
+  const [h, parts, beside] = await Promise.all([
+    q(sb.from("fp_card_header").select("*").eq("card_id", id)).then(r => r[0] || null),
+    q(sb.from("fp_card_parts").select("n,name,family,contribution,raw,no_effect").eq("card_id", id)),
+    q(sb.from("fp_card_beside").select("n,name,value,raw,flag,detail").eq("card_id", id))]);
+  return h && { h, parts, beside };
+}
+async function texts() {
+  if (FP.texts) return FP.texts;
+  const T = PREVIEW ? (await fetch("preview.json").then(r => r.json())).texts : await q(sb.from("fp_param_text").select("*").order("n"));
+  return FP.texts = T;
+}
+const pct = (k, d = 0) => { const v = (Math.exp(k) - 1) * 100; return (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d) + " %"; };
+function besideText(n, b, h) {
+  if (n === 21 && b && b.detail) return `${pct(b.detail.k4)} in 4 weeks · ${pct(b.detail.k8)} in 8 · ${pct(b.detail.k26)} in 26`;
+  if (n === 22 && b && b.value != null) return `${Math.round(b.value * 100)} % below its 52-week high`;
+  if (n === 23 && b && b.value != null) return `${pct(Math.log(1 + b.value))} against its own last 12 months`;
+  if (n === 24 && h.l != null && h.segment !== "low") { const g = gap(h.l); return `${g.txt} ${h.l > 0 ? "above" : "below"} fair`; }
+  if (n === 25 && h.market_chf) return chf(h.market_chf);
+  if (n === 26 && h.sales_4w != null) { const w = h.sales_4w / 4; return w < 0.75 ? `${h.sales_4w} sales in 4 weeks` : `about ${Math.round(w)} sale${Math.round(w) === 1 ? "" : "s"} a week`; }
+  return b && b.raw ? b.raw : null;
+}
+function bar(h) {
+  if (!h.band80_lo || !h.band80_hi || !h.fair_chf) return "";
+  const lo = Math.log(h.band80_lo) - 0.12, hi = Math.log(h.band80_hi) + 0.12, X = v => Math.max(0, Math.min(100, (Math.log(v) - lo) / (hi - lo) * 100));
+  const m = h.market_chf, above = m > h.fair_chf, out = m > h.band80_hi || m < h.band80_lo;
+  return `<div class="bar" aria-hidden="true"><div class="b80" style="left:${X(h.band80_lo)}%;right:${100 - X(h.band80_hi)}%"></div>
+    <div class="b50" style="left:${X(h.band50_lo)}%;right:${100 - X(h.band50_hi)}%"></div><div class="fair" style="left:${X(h.fair_chf)}%"></div>
+    ${m ? `<div class="mkt ${above ? "above" : ""} ${out ? (m > h.band80_hi ? "out r" : "out l") : ""}" style="left:${X(m)}%"></div>` : ""}</div>
+    <div class="bl"><span>80 %: ${Math.round(h.band80_lo).toLocaleString("en-US")}–${Math.round(h.band80_hi).toLocaleString("en-US")}</span><span>middle half: ${Math.round(h.band50_lo).toLocaleString("en-US")}–${Math.round(h.band50_hi).toLocaleString("en-US")}</span></div>`;
+}
+function headerBox(h) {
+  if (h.segment === "low") {
+    const ok = h.context_median_chf && h.context_n >= 5;
+    return `<div class="box"><div class="hd"><div class="mk"><small>Market</small><b>${chf(h.market_chf)}</b></div>
+      ${ok ? `<div class="fr"><small>Similar cards in this set</small><b>${chf(h.context_median_chf)}</b></div>` : ""}</div>
+      ${ok ? `<p class="ctx">median of ${h.context_n} ${esc(h.context_label || "similar cards")}, this card left out</p>` : ""}
+      <div class="facts">${h.sales_4w != null ? `<span><b>${h.sales_4w}</b> sales in 4 weeks</span>` : ""}</div></div>`;
+  }
+  const g = gap(h.l);
+  return `<div class="box"><div class="hd"><div class="mk"><small>Market</small><b>${chf(h.market_chf)}</b></div>
+    <div class="fr"><small>Fair price</small>${h.held ? `<b style="font-size:15px;color:var(--muted)">Fair price under review</b>` : `<b>${chf(h.fair_chf)}</b>${g ? `<em class="${g.cls}">${g.txt}</em>` : ""}`}</div></div>
+    ${h.held ? "" : bar(h)}
+    <div class="facts">${h.sales_4w != null ? `<span><b>${h.sales_4w}</b> sales in 4 weeks</span>` : ""}${h.character && h.character_cards ? `<span><b>${h.character_cards}</b> ${esc(h.character)} cards</span>` : ""}</div>
+    <p class="src">TCGplayer market price, ${esc(h.day)} · fair price: HoloTrack's model, weekly refit</p></div>`;
+}
+function plist(C, T) {
+  const h = C.h, parts = Object.fromEntries(C.parts.map(p => [p.n, p])), bes = Object.fromEntries(C.beside.map(b => [b.n, b]));
+  const counted = [], beside = [], events = [], notyet = [];
+  for (const t of T) {
+    if (t.status === "baseline") counted.push([t, "sets the comparison", "m"]);
+    else if (COUNTED(t.status)) {
+      if (h.segment === "low") notyet.push([t, "not counted for low-tier cards", "m"]);
+      else if (parts[t.n]) { const p = parts[t.n], r = Math.exp(p.contribution); counted.push([t, p.no_effect ? "×1 · adds nothing" : xm(r), p.no_effect ? "m" : r > 1 ? "up" : "m"]); }
+      else notyet.push([t, `not counted for ${h.segment} cards`, "m"]);
+    }
+    else if (t.status === "behaviour") { const v = besideText(t.n, bes[t.n], h); beside.push([t, v || "not in the app yet", v ? "" : "m"]); }
+    else if (t.status === "event") events.push([t, "dots on the fingerprint", "m"]);
+    else notyet.push([t, t.status === "copy" ? "your copy" : t.status === "empty" ? "empty" : "observed", "m"]);
+  }
+  const row = ([t, v, cls]) => `<button class="pr" data-n="${t.n}"><span>${esc(t.name)}<i>P${t.n}</i></span><span class="pv ${cls}">${esc(v)}</span></button>`;
+  const grp = (title, rows, fold) => rows.length ? `<div class="pg"><div class="pgh">${title} · ${rows.length}</div>${fold ? `<div class="fold" hidden>${rows.map(row).join("")}</div><button class="more">Show all ${rows.length}</button>` : rows.map(row).join("")}</div>` : "";
+  FP.order = [...counted, ...beside, ...events, ...notyet].map(([t]) => t.n);
+  return `<div class="box plist">${grp("Counted in the fair price", counted)}${grp("Beside the price", beside)}${grp("Events", events)}${grp("Not yet counted", notyet, true)}</div>`;
+}
+const CHIP = { counted: "Counted in the fair price", behaviour: "Beside the price, never in it", event: "Dots on the fingerprint", observed: "Observed, not yet counted", empty: "Empty", copy: "Your copy only", baseline: "Sets the comparison" };
+function sheet(n) {
+  const C = FP.card, T = FP.texts, t = T.find(x => x.n === n); if (!t) return;
+  const h = C.h, p = C.parts.find(x => x.n === n), st = COUNTED(t.status) ? "counted" : t.status;
+  let on;
+  if (st === "counted" && p && h.segment !== "low") on = p.no_effect ? `<p>Counted, but ${esc(h.name)} equals the typical card here, so it adds nothing (×1).</p>`
+    : `<b class="big ${p.contribution > 0 ? "up" : ""}">${xm(Math.exp(p.contribution))}</b><p>${esc(p.raw || t.name)} · measured against the ${esc(h.typical_label || "typical card")}${h.typical_base_chf ? ` (${chf(h.typical_base_chf)})` : ""}</p>`;
+  else if (st === "counted") on = `<p>Not counted for ${esc(h.segment)} cards.</p>`;
+  else if (st === "baseline") on = `<p>Sets the comparison: ${esc(h.name)} is measured against the ${esc(h.typical_label || "typical card")}${h.typical_base_chf ? ` (${chf(h.typical_base_chf)})` : ""}, and every counted parameter starts from there.</p>`;
+  else if (st === "behaviour") { const v = besideText(n, C.beside.find(b => b.n === n), h); on = `<p>${v ? esc(v) : "Not in the app yet."}</p>`; }
+  else if (st === "event") on = `<p>Shown as dots on the fingerprint (History).</p>`;
+  else if (st === "empty") on = `<p>Empty because ${esc(t.empty_reason || "no data source exists yet")}.</p>`;
+  else if (st === "copy") on = `<p>Only for a copy you own: add condition or grade to your copy to see it.</p>`;
+  else on = `<p>Collected for every card; not yet part of the fair price.</p>`;
+  const i = FP.order.indexOf(n), prev = FP.order[i - 1], next = FP.order[i + 1];
+  $("sheet").innerHTML = `<div class="grab"></div><div class="shd"><span class="label">P${n} · ${esc((t.family || "").toUpperCase())}</span><button id="sdone">Done</button></div>
+    <h2 id="s-name">${esc(t.name)}</h2><span class="chip ${st === "counted" ? "ink" : ""}">${CHIP[st] || esc(st)}</span>
+    <div class="on"><div class="label">On this card</div>${on}</div>
+    ${t.what ? `<h3>What it is</h3><p>${esc(t.what)}</p>` : ""}${t.how ? `<h3>How it's measured</h3><p>${esc(t.how)}</p>` : ""}
+    ${t.low_note ? `<h3>Low</h3><p>${esc(t.low_note)}</p>` : ""}${t.high_note ? `<h3>High</h3><p>${esc(t.high_note)}</p>` : ""}
+    <div class="snav">${prev != null ? `<button data-go="${prev}">‹ Previous</button>` : "<span></span>"}${next != null ? `<button data-go="${next}">Next ›</button>` : ""}</div>`;
+  $("sheet").classList.add("on"); $("scrim").classList.add("on"); $("sheet").scrollTop = 0;
+  $("sdone").onclick = closeSheet; $("sheet").querySelectorAll("[data-go]").forEach(b => b.onclick = () => sheet(+b.dataset.go));
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+document.addEventListener("click", e => { if (e.target && e.target.id === "scrim") closeSheet(); });
+(() => { let y0 = null; document.addEventListener("touchstart", e => { const s = $("sheet"); y0 = s && s.contains(e.target) && s.scrollTop <= 0 ? e.touches[0].clientY : null; }, { passive: true });
+  document.addEventListener("touchend", e => { if (y0 != null && e.changedTouches[0].clientY - y0 > 80) closeSheet(); y0 = null; }, { passive: true }); })();
+function closeSheet() { $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); }
+async function card(id) {
+  FP.tab = "collection";
+  $("view").innerHTML = `<div class="top"><button id="back">‹ Collection</button><span class="private">PRIVATE</span></div><h1>…</h1>`;
+  $("back").onclick = () => { location.hash = "collection"; };
+  let C, T;
+  try { [C, T] = await Promise.all([loadCard(id), texts()]); } catch (e) { C = null; }
+  if (!C) { $("view").innerHTML += `<p class="sub">This card has no figures in the model yet.</p>`; return; }
+  FP.card = C; const h = C.h;
+  $("view").innerHTML = `<div class="top"><button id="back">‹ Collection</button><span class="private">PRIVATE</span></div>
+    <h1 class="cardt">${esc(h.name)}</h1><p class="sub">${esc(h.set_name || h.set_id)} · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
+    <div class="segc" role="tablist"><button role="tab" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" aria-selected="false" disabled>Why</button>`}<button role="tab" aria-selected="false" disabled>History</button></div>
+    ${headerBox(h)}
+    <div class="box flowph"><p>The flow (every parameter on one arc) comes in the next build. Tap a row below to read a parameter.</p></div>
+    ${plist(C, T)}`;
+  $("back").onclick = () => { location.hash = "collection"; };
+  document.querySelectorAll(".pr").forEach(b => b.onclick = () => sheet(+b.dataset.n));
+  document.querySelectorAll(".more").forEach(b => b.onclick = () => { b.previousElementSibling.hidden = false; b.remove(); });
 }
 const TABS = {
   collection,
