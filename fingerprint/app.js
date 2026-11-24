@@ -571,3 +571,4 @@ $("f").onsubmit = async e => {
   $("msg").textContent = ""; start();
 };
 start();
+if ("serviceWorker" in navigator && !PREVIEW) navigator.serviceWorker.register("sw.js").catch(() => {});
