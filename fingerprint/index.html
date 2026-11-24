@@ -158,6 +158,22 @@ input[type=range]{width:100%;margin:10px 0 0;accent-color:var(--ink);min-height:
 svg.fp .ev{fill:var(--ink);stroke:var(--card);stroke-width:1.2;cursor:pointer}
 svg.fp .mkr{fill:none;stroke:var(--ink);stroke-width:2}
 .evl{margin:8px 0 0;font-size:13px;line-height:1.45;color:var(--muted)}.evl b{color:var(--ink)}
+/* compare + movers (spec §5, Movers brief) */
+.cmpsel{display:grid;gap:8px}
+select{font:15px var(--sf);padding:10px 12px;border-radius:10px;border:1px solid var(--rule);background:var(--card);color:var(--ink);min-height:44px;width:100%}
+.cmpgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cmph{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;min-width:0}
+.cmph .mini svg{width:96px;height:96px}.cmph b{font-size:15px}.cmph span{font-size:12px;color:var(--muted)}
+.ctable{padding:4px 0}
+.cr{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:8px;padding:10px 16px;border-bottom:.5px solid var(--rule);font-size:14px;font-variant-numeric:tabular-nums;align-items:center}
+.cr:last-child{border-bottom:0}.cr>span:first-child{color:var(--muted)}.cr>span:not(:first-child){text-align:right}
+.upc{color:var(--fp-up);font-weight:700}.dnc{color:var(--muted)}
+.filt{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.filt label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+.filt label.sw{grid-column:1/-1;flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--ink);min-height:44px}
+.filt input[type=checkbox]{width:22px;height:22px;accent-color:var(--ink)}
+em.mv{color:var(--ink)}
+#mvList{margin-top:12px}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>

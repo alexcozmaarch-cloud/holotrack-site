@@ -413,13 +413,13 @@ function histWire() {
 }
 async function card(id) {
   FP.tab = "collection";
-  $("view").innerHTML = `<div class="top"><button id="back">‹ Collection</button><span class="private">PRIVATE</span></div><h1>…</h1>`;
-  $("back").onclick = () => { location.hash = "collection"; };
+  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div><h1>…</h1>`;
+  $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "collection"); };
   let C, T;
   try { [C, T] = await Promise.all([loadCard(id), texts()]); } catch (e) { C = null; }
   if (!C) { $("view").innerHTML += `<p class="sub">This card has no figures in the model yet.</p>`; return; }
   FP.card = C; const h = C.h;
-  $("view").innerHTML = `<div class="top"><button id="back">‹ Collection</button><span class="private">PRIVATE</span></div>
+  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
     <h1 class="cardt">${esc(h.name)}</h1><p class="sub">${esc(h.set_name || h.set_id)} · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
     <div class="segc" role="tablist"><button role="tab" data-p="today" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" data-p="why" aria-selected="false">Why</button>`}<button role="tab" data-p="hist" aria-selected="false">History</button></div>
     ${headerBox(h)}
@@ -433,14 +433,115 @@ async function card(id) {
       $("p-hist").innerHTML = histPane(C); $("p-hist").dataset.done = 1; histWire(); }
   });
   if (FP.openTab) { const b = document.querySelector(`.segc [data-p="${FP.openTab}"]`); FP.openTab = null; if (b) b.click(); }
-  $("back").onclick = () => { location.hash = "collection"; };
+  $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "collection"); };
   document.querySelectorAll(".pr, .hit").forEach(b => b.onclick = () => sheet(+b.dataset.n));
   document.querySelectorAll(".more").forEach(b => b.onclick = () => { b.previousElementSibling.hidden = false; b.remove(); });
 }
+/* ---------- Compare (spec §5) ---------- */
+function cropW(w, weeks) { if (!w || !w.weeks) return w; const k = Math.max(0, w.weeks.length - weeks); return { weeks: w.weeks.slice(k), market_chf: w.market_chf.slice(k), fair_chf: (w.fair_chf || []).slice(k), sales: (w.sales || []).slice(k) }; }
+function miniOf(id, name, weeks) {
+  const w = FP.weekly[id];
+  if (!w || !w.weeks || w.weeks.length < 2) return `<svg viewBox="0 0 64 64" role="img" aria-label="No history yet"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--gr-2)" stroke-width="1.5" stroke-dasharray="2 4"/><text class="none" x="32" y="35" text-anchor="middle">none yet</text></svg>`;
+  return `<svg viewBox="-4 -4 208 208" role="img" aria-label="Fingerprint of ${esc(name)}">${spiral(weeks ? cropW(w, weeks) : w, { mini: true })}</svg>`;
+}
+async function compare() {
+  $("view").innerHTML = head() + `<h1>Compare</h1><p class="sub">Loading…</p>`;
+  let rows; try { rows = FP.rows = FP.rows || await loadCollection(); } catch (e) { rows = []; }
+  if (FP.tab !== "compare") return;
+  const opts = [...rows].sort((a, b) => (a.name || "").localeCompare(b.name || "") || (b.market_chf || 0) - (a.market_chf || 0));
+  if (opts.length < 2) { $("view").innerHTML = head() + `<h1>Compare</h1><p class="sub">Add two cards to your collection to compare them.</p>`; return; }
+  const byMkt = [...rows].sort((a, b) => (b.market_chf || 0) - (a.market_chf || 0));
+  FP.cmp = FP.cmp || [byMkt[0].card_id, byMkt[1].card_id];
+  const sel = i => `<select id="cmp${i}" aria-label="Card ${i + 1}">${opts.map(r => `<option value="${esc(r.card_id)}" ${FP.cmp[i] === r.card_id ? "selected" : ""}>${esc(r.name)} · ${esc(r.set_name || r.set_id)} · ${esc(r.num)}</option>`).join("")}</select>`;
+  $("view").innerHTML = head() + `<h1>Compare</h1><p class="sub">Two cards side by side.</p>
+    <div class="box cmpsel">${sel(0)}${sel(1)}</div><div id="cmpt"><div class="box"><p class="why m">Loading…</p></div></div>`;
+  [0, 1].forEach(i => $("cmp" + i).onchange = e => { FP.cmp[i] = e.target.value; cmpTable(); });
+  cmpTable();
+}
+async function cmpTable() {
+  const ids = FP.cmp; let A, B, T;
+  try { [A, B, T] = await Promise.all([loadCard(ids[0]), loadCard(ids[1]), texts()]); await loadWeekly(ids); } catch (e) { }
+  if (FP.tab !== "compare") return;
+  const cs = [A, B];
+  const cell = (C, f) => !C ? "—" : f(C);
+  const lowRow = (C, f) => C.h.segment === "low" ? "—" : f(C);
+  const head2 = cs.map((C, i) => `<div class="cmph"><span class="mini">${miniOf(ids[i], C ? C.h.name : ids[i])}</span><b>${esc(C ? C.h.name : ids[i])}</b><span>${C ? `${esc(C.h.set_name || C.h.set_id)} · ${LOOK[C.h.look] || esc(C.h.look)} · ${esc(C.h.num)}` : "not in the model"}</span></div>`).join("");
+  const rows = [
+    ["Market", C => chf(C.h.market_chf)],
+    ["Fair price", C => C.h.segment === "low" ? (C.h.context_median_chf && C.h.context_n >= 5 ? `similar ${chf(C.h.context_median_chf)}` : "—") : C.h.held ? "under review" : chf(C.h.fair_chf)],
+    ["Market vs fair", C => lowRow(C, C => { const g = gap(C.h.l); return g ? `<span class="${g.cls === "up" ? "upc" : "dnc"}">${g.txt}</span>` : "—"; })],
+    ["Middle half", C => lowRow(C, C => C.h.band50_lo ? `${Math.round(C.h.band50_lo).toLocaleString("en-US")}–${Math.round(C.h.band50_hi).toLocaleString("en-US")}` : "—")],
+    ["Typical card", C => lowRow(C, C => C.h.typical_base_chf ? chf(C.h.typical_base_chf) : "—")],
+  ];
+  const pn = [...new Set(cs.flatMap(C => C && C.h.segment !== "low" ? C.parts.map(p => p.n) : []))].sort((a, b) => a - b);
+  for (const n of pn) {
+    const t = (T || []).find(x => x.n === n);
+    rows.push([t ? t.name : "P" + n, C => lowRow(C, C => { const p = C.parts.find(x => x.n === n); if (!p) return "not counted"; if (p.no_effect) return "×1"; const r = Math.exp(p.contribution); return `<span class="${r > 1 ? "upc" : ""}">${xm(r)}</span>`; })]);
+  }
+  rows.push(["Sales", C => C.h.sales_4w != null ? `${C.h.sales_4w} in 4 weeks` : "—"]);
+  rows.push(["Breathes every", C => `${period(C.h.sales_4w).toFixed(1)} s`]);
+  $("cmpt").innerHTML = `<div class="box cmpgrid">${head2}</div><div class="box ctable">${rows.map(([l, f]) => `<div class="cr"><span>${esc(l)}</span><span>${cell(cs[0], f)}</span><span>${cell(cs[1], f)}</span></div>`).join("")}</div>`;
+}
+
+/* ---------- Movers (Build brief 23 Nov) ---------- */
+const MW = { 7: { chg: "chg7", sold: "sold7", floor: 2, weeks: 4 }, 30: { chg: "chg30", sold: "sold30", floor: 4, weeks: 8 }, 90: { chg: "chg90", sold: "sold90", floor: 4, weeks: 13 } };
+const BANDS = [["5-", "5+"], ["all", "All"], ["0-15", "< 15"], ["15-75", "15–75"], ["75-150", "75–150"], ["150-300", "150–300"], ["300-", "300+"]];
+const SERIE = { me: "Mega Evolution", sv: "Scarlet & Violet", swsh: "Sword & Shield", sm: "Sun & Moon", xy: "XY", bw: "Black & White", hgss: "HeartGold SoulSilver", dp: "Diamond & Pearl", pl: "Platinum", ex: "EX", ecard: "e-Card", neo: "Neo", base: "Base", gym: "Gym", col: "Call of Legends", lc: "Legendary Collection", pop: "POP", tk: "Trainer kits", misc: "Other" };
+async function movers() {
+  FP.mv = FP.mv || { dir: "up", win: 30, serie: "", set: "", band: "5-", rar: "", fresh: false };
+  const M = FP.mv;
+  if (!FP.facets) { try { FP.facets = PREVIEW ? (await fetch("preview.json").then(r => r.json())).facets || [] : await q(sb.from("fp_movers_facets").select("*").range(0, 1999)); } catch (e) { FP.facets = []; } }
+  const F = FP.facets, series = [...new Set(F.map(f => f.serie).filter(Boolean))];
+  const sets = F.filter(f => !M.serie || f.serie === M.serie).sort((a, b) => (b.release_date || "").localeCompare(a.release_date || ""));
+  const rars = [...new Set(F.filter(f => (!M.serie || f.serie === M.serie) && (!M.set || f.set_id === M.set)).flatMap(f => f.rarities || []))].sort();
+  const seg = (k, opts) => `<div class="segc" role="group">${opts.map(([v, l]) => `<button data-${k}="${v}" aria-selected="${String(M[k]) === String(v)}">${l}</button>`).join("")}</div>`;
+  $("view").innerHTML = head() + `<h1>Movers</h1><p class="sub">TCGplayer market price over the window · cards with too few sales left out</p>
+    ${seg("dir", [["up", "Rising"], ["down", "Falling"]])}${seg("win", [[7, "7 days"], [30, "30 days"], [90, "90 days"]])}
+    <div class="box filt">
+      <label>Era<select id="mvSerie"><option value="">All eras</option>${series.map(s => `<option value="${esc(s)}" ${M.serie === s ? "selected" : ""}>${esc(SERIE[s] || s)}</option>`).join("")}</select></label>
+      <label>Set<select id="mvSet"><option value="">All sets</option>${sets.map(f => `<option value="${esc(f.set_id)}" ${M.set === f.set_id ? "selected" : ""}>${esc(f.set_name || f.set_id)}</option>`).join("")}</select></label>
+      <label>Price (CHF)<select id="mvBand">${BANDS.map(([v, l]) => `<option value="${v}" ${M.band === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <label>Rarity<select id="mvRar"><option value="">All rarities</option>${rars.map(r => `<option ${M.rar === r ? "selected" : ""}>${esc(r)}</option>`).join("")}</select></label>
+      <label class="sw"><input type="checkbox" id="mvFresh" ${M.fresh ? "checked" : ""}> Include new releases (under 90 days)</label>
+    </div><div id="mvList"><div class="box"><p class="why m">Loading…</p></div></div>`;
+  document.querySelectorAll("[data-dir]").forEach(b => b.onclick = () => { M.dir = b.dataset.dir; movers(); });
+  document.querySelectorAll("[data-win]").forEach(b => b.onclick = () => { M.win = +b.dataset.win; movers(); });
+  $("mvSerie").onchange = e => { M.serie = e.target.value; M.set = ""; movers(); };
+  $("mvSet").onchange = e => { M.set = e.target.value; movers(); };
+  $("mvBand").onchange = e => { M.band = e.target.value; movers(); };
+  $("mvRar").onchange = e => { M.rar = e.target.value; movers(); };
+  $("mvFresh").onchange = e => { M.fresh = e.target.checked; movers(); };
+  const W = MW[M.win];
+  let rows;
+  try {
+    if (PREVIEW) rows = ((await fetch("preview.json").then(r => r.json())).movers || []).filter(r => r[W.chg] != null && (r[W.sold] || 0) >= W.floor && (M.dir === "up" ? r[W.chg] > 0 : r[W.chg] < 0)).sort((a, b) => M.dir === "up" ? b[W.chg] - a[W.chg] : a[W.chg] - b[W.chg]);
+    else {
+      let qy = sb.from("fp_movers_v").select("*").not(W.chg, "is", null).gte(W.sold, W.floor);
+      qy = M.dir === "up" ? qy.gt(W.chg, 0).order(W.chg, { ascending: false }) : qy.lt(W.chg, 0).order(W.chg, { ascending: true });
+      if (M.serie) qy = qy.eq("serie", M.serie);
+      if (M.set) qy = qy.eq("set_id", M.set);
+      if (M.rar) qy = qy.eq("rarity", M.rar);
+      if (M.band !== "all") { const [lo, hi] = M.band.split("-"); qy = qy.gte("market_chf", +lo); if (hi) qy = qy.lt("market_chf", +hi); }
+      if (!M.fresh) qy = qy.lte("release_date", new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10));
+      rows = await q(qy.limit(50));
+    }
+  } catch (e) { $("mvList").innerHTML = `<div class="box"><p class="why m">Couldn't load the movers. Try again in a moment.</p></div>`; return; }
+  if (FP.tab !== "movers") return;
+  await loadWeekly(rows.map(r => r.card_id)).catch(() => {});
+  if (FP.tab !== "movers") return;
+  $("mvList").innerHTML = rows.length ? `<div class="list">${rows.map(r => { const c = +r[W.chg]; return `<button class="crow" data-id="${esc(r.card_id)}">
+      <span class="mini">${miniOf(r.card_id, r.name, W.weeks)}</span>
+      <span class="cm"><b>${esc(r.name)}</b><span>${esc(r.set_name || r.set_id)} · ${LOOK[r.look] || esc(r.look)} · ${esc(r.num)}</span>
+      <span class="cv">${chf(+r.market_chf)}<em class="mv">${c > 0 ? "▲ +" : "▼ −"}${Math.abs(c * 100).toFixed(1)} %</em><i>${r[W.sold]} sold in ${M.win} days</i></span></span>
+      <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`; }).join("")}</div>
+      <p class="foot">Top ${rows.length}. Sales floor: ${W.floor}+ copies sold in the window. Each fingerprint shows the last ${W.weeks} weeks.</p>`
+    : `<div class="box empty"><p>No card moved this way with enough sales in this window.</p></div>`;
+  document.querySelectorAll("#mvList .crow").forEach(b => b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); });
+}
 const TABS = {
   collection,
-  movers: () => { $("view").innerHTML = head() + `<h1>Movers</h1><p class="sub">Rising and falling cards over 7, 30 and 90 days.</p><div class="box empty"><p>Coming in a later build.</p></div>`; },
-  compare: () => { $("view").innerHTML = head() + `<h1>Compare</h1><p class="sub">Two cards side by side.</p><div class="box empty"><p>Coming in a later build.</p></div>`; },
+  movers,
+  compare,
 };
 function route() {
   const h = decodeURIComponent((location.hash || "").replace(/^#/, ""));
