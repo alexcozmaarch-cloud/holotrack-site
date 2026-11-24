@@ -223,6 +223,8 @@ const FAM = ["context", "identity", "state", "lyrical", "copy"];          // lef
 const FAMW = { identity: .5, state: .22, context: .1, lyrical: .09, copy: .09 };
 const FAMN = { identity: "Identity", state: "State", context: "Context", lyrical: "Lyrical", copy: "Copy" };
 const STR = [];                                                              // counted strings that sway (middles only)
+// one multiplier everywhere (lab 24 Nov): fair ÷ typical base from fp_card_header, rounded once by xm()
+const prodOf = (h, sum) => h.fair_chf && h.typical_base_chf ? h.fair_chf / h.typical_base_chf : Math.exp(sum || 0);
 function flowSvg(C, T) {
   const h = C.h, low = h.segment === "low", cx = 190, sy = 228, R = 172, Rr = 150;
   const parts = Object.fromEntries(C.parts.map(p => [p.n, p]));
@@ -281,12 +283,12 @@ function flowSvg(C, T) {
     Array.from({ length: 35 }, (_, i) => { const x = cx - R + i * (2 * R / 34); return `<line x1="${x.toFixed(1)}" y1="${sy - 3}" x2="${x.toFixed(1)}" y2="${sy + 3}" class="tick"/>`; }).join("");
   const sum = C.parts.reduce((s, p) => s + (p.contribution || 0), 0);
   const [r0x, r0y] = [cx - Rr * .78, sy + 40 + Rr * .55], [r1x, r1y] = [cx + Rr * .78, sy + 40 + Rr * .55];
-  const res = low ? "NO FAIR PRICE · LOW TIER" : `RESULT ${xm(Math.exp(sum))} → FAIR ${h.fair_chf ? Math.round(h.fair_chf).toLocaleString("en-US") : "—"}`;
+  const res = low ? "NO FAIR PRICE · LOW TIER" : `RESULT ${xm(prodOf(h, sum))} → FAIR ${h.fair_chf ? Math.round(h.fair_chf).toLocaleString("en-US") : "—"}`;
   const resArc = `<path id="fl-res" d="M${r0x.toFixed(1)},${r0y.toFixed(1)} A${Rr},${Rr * .9} 0 0 0 ${r1x.toFixed(1)},${r1y.toFixed(1)}" class="${low ? "resl" : "resa"}"/>
     <path id="fl-rest" d="M${(r0x - 6).toFixed(1)},${(r0y + 14).toFixed(1)} A${Rr + 10},${(Rr + 10) * .9} 0 0 0 ${(r1x + 6).toFixed(1)},${(r1y + 14).toFixed(1)}" fill="none"/>
     <text class="res ${low ? "" : "on"}"><textPath href="#fl-rest" startOffset="50%" text-anchor="middle">${res}</textPath></text>`;
   const aria = low ? `Flow of ${h.name}: every parameter stops at the sieve; low-tier cards have no fair price.`
-    : `Flow of ${h.name}, read top to bottom: ${T.length} parameters on the upper arc, a sieve on the diameter, the result on the lower arc. ${counted.length} counted parameters pass, together ${xm(Math.exp(sum))}.`;
+    : `Flow of ${h.name}, read top to bottom: ${T.length} parameters on the upper arc, a sieve on the diameter, the result on the lower arc. ${counted.length} counted parameters pass, together ${xm(prodOf(h, sum))}.`;
   return `<svg class="flow" viewBox="-14 -4 408 ${low ? 300 : 470}" role="img" aria-label="${esc(aria)}"><g class="fams">${fam}</g><g class="ss">${out}</g>${sieve}${low ? "" : resArc}${low ? `<text class="res" x="${cx}" y="${sy + 34}" text-anchor="middle">${res}</text>` : ""}<g class="hits">${hits}</g></svg>`;
 }
 function strD(s, d) {
@@ -315,7 +317,7 @@ function whyPane(C) {
   const steps = C.parts.filter(p => !p.no_effect).sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
   const base = h.typical_base_chf, fair = h.fair_chf, m = h.market_chf;
   if (!base || !fair) return `<div class="box"><p class="why">No fair price for this card yet.</p></div>`;
-  const prod = fair / base, names = steps.map(p => NAMEL[p.n] || p.name.toLowerCase());
+  const prod = prodOf(h), names = steps.map(p => NAMEL[p.n] || p.name.toLowerCase());
   const list = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names.at(-1) : names[0] || "Nothing";
   let s2;
   if (m > h.band50_hi) s2 = `The market pays ${xm(m / fair)} more: priced by something the model doesn't count yet.`;
