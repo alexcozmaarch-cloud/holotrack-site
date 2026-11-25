@@ -39,7 +39,14 @@ async function loadWeekly(ids) {
 
 /* ---------- the fingerprint (spiral): one turn per month since March 2024 ---------- */
 const T0 = Date.parse("2024-03-01T00:00:00Z"), MONTH = 30.44 * 864e5;
-function spiral(w, { size = 200, r0 = 14, r1 = 94, mini = false } = {}) {
+// life-cycle phase of the card's set on a day (pf_events P32: new print / in print / out of print) → shade step 1 / 2 / 3
+function phaseAt(phases, ms) {
+  let best = null;
+  for (const p of phases || []) { const a = Date.parse(p.day + "T00:00:00Z"), b = p.day_end ? Date.parse(p.day_end + "T00:00:00Z") : Infinity;
+    if (ms >= a && ms < b && (!best || a >= best.a)) best = { a, k: /new/i.test(p.label) ? 1 : /out/i.test(p.label) ? 3 : 2 }; }
+  return best ? best.k : null;
+}
+function spiral(w, { size = 200, r0 = 14, r1 = 94, mini = false, phases = null } = {}) {
   const c = size / 2, n = w.weeks.length;
   if (!n) return "";
   const t = w.weeks.map(d => Date.parse(d + "T00:00:00Z"));
@@ -50,7 +57,8 @@ function spiral(w, { size = 200, r0 = 14, r1 = 94, mini = false } = {}) {
   let old = "", nw = "";
   for (let i = 1; i < n; i++) {
     const m = w.market_chf[i], f = w.fair_chf ? w.fair_chf[i] : null, l = (m && f) ? Math.log(m / f) : null;
-    const col = l == null ? "var(--gr-1)" : l > 0 ? "var(--fp-3)" : "var(--gr-2)";
+    const ph = phases ? phaseAt(phases, t[i]) : null;                      // History only: shade by the set's print phase
+    const col = l == null ? "var(--gr-1)" : l > 0 ? (ph ? `var(--fp-${ph})` : "var(--fp-3)") : (ph ? `var(--gr-${ph})` : "var(--gr-2)");
     const sw = (l == null ? 1.1 : 1.2 + Math.min(Math.abs(l), 2) * 1.3) * (mini ? 0.75 : 0.45);
     const s = w.sales ? w.sales[i] : null, strands = s == null || s <= 1 ? 1 : s <= 5 ? 2 : 3;
     const offs = strands === 1 ? [0] : strands === 2 ? [-1.4, 1.4] : [-2, 0, 2];
@@ -361,11 +369,13 @@ async function loadHist(C) {
   const id = C.h.card_id;
   await loadWeekly([id]).catch(() => {});
   if (!C.events) {
-    if (PREVIEW) C.events = ((await fetch("preview.json").then(r => r.json())).events || []);
+    if (PREVIEW) { const P = await fetch("preview.json").then(r => r.json()); C.events = P.events || []; C.phases = (P.phases || {})[C.h.set_id] || []; }
     else {
       const ors = [`scope.eq.all`, `and(scope.eq.set,scope_id.eq.${C.h.set_id})`, `and(scope.eq.card,scope_id.eq.${id})`];
       if (C.h.character) ors.push(`and(scope.eq.character,scope_id.eq."${C.h.character.replace(/"/g, "")}")`);
-      C.events = await q(sb.from("fp_events").select("id,day,n,label,scope,scope_id,phase").neq("n", "P32").or(ors.join(","))).catch(() => []);
+      [C.events, C.phases] = await Promise.all([
+        q(sb.from("fp_events").select("id,day,n,label,scope,scope_id,phase").neq("n", "P32").or(ors.join(","))).catch(() => []),
+        q(sb.from("fp_events").select("day,day_end,label").eq("n", "P32").eq("scope", "set").eq("scope_id", C.h.set_id)).catch(() => [])]);
     }
   }
 }
@@ -380,9 +390,10 @@ function histPane(C) {
   const dots = evs.map((e, i) => { const [x, y] = pos(Date.parse(e.day + "T00:00:00Z")); return `<circle class="ev" data-e="${i}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2"><title>${esc(e.label)}</title></circle>`; }).join("");
   C._hist = { w, t, pos, evs, low };
   return `<div class="box ringbox"><div class="ro"><span class="d" id="ro-d"></span><span class="g" id="ro-g"></span><span class="m" id="ro-m"></span><span class="s" id="ro-s"></span></div>
-    <svg class="fp big" id="fpbig" viewBox="-4 -4 208 208" role="img" aria-label="Fingerprint of ${esc(h.name)}: one spiral turn per month since March 2024${low ? ", grey throughout: low-tier cards have no fair price" : ", orange where the market sat above the fair price"}">${spiral(ww)}<g class="evs">${dots}</g><circle id="mkr" r="4.5" class="mkr"/></svg>
+    <svg class="fp big" id="fpbig" viewBox="-4 -4 208 208" role="img" aria-label="Fingerprint of ${esc(h.name)}: one spiral turn per month since March 2024${low ? ", grey throughout: low-tier cards have no fair price" : ", orange where the market sat above the fair price"}">${spiral(ww, { phases: C.phases })}<g class="evs">${dots}</g><circle id="mkr" r="4.5" class="mkr"/></svg>
     <input type="range" id="scrub" min="0" max="${w.weeks.length - 1}" value="${w.weeks.length - 1}" aria-label="Week">
     <p class="hint">Drag along the spiral or the slider · tap a dot for its event · one turn per month · ${low ? "grey throughout: low-tier cards have no fair price" : "orange = above fair price"}</p>
+    ${C.phases && C.phases.length ? `<div class="phk" aria-label="Shade by the set's print phase">${[[1, "new print"], [2, "in print"], [3, "out of print"]].map(([k, l]) => `<span><i style="background:var(--${low ? "gr" : "fp"}-${k})"></i><i style="background:var(--gr-${k})"></i>${l}</span>`).join("")}</div>` : ""}
     <p class="evl" id="evl" hidden></p></div>`;
 }
 function histWeek(i) {
