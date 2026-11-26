@@ -660,7 +660,7 @@ function setLineSvg(S) {                                    // 2 · the set's li
     if (ca > ta || cb > tb) fill += `<path class="sabove" d="M${X(a)},${Y(Math.max(ca, ta))}L${X(b)},${Y(Math.max(cb, tb))}L${X(b)},${Y(tb)}L${X(a)},${Y(ta)}Z"/>`; }
   const t0 = since ? SINCE0 : Date.parse(S.h.release_date);
   const ev = (S.ev || []).filter(e => e.day && S.h.release_date).map(e => ({ ...e, wk: Math.floor((Date.parse(e.day) - t0) / 6048e5) + 1 })).filter(e => e.wk >= 1 && e.wk <= maxW && e.phase !== "during");
-  const ticks = [0.5, 1, 1.5, 2, 2.5, 3].filter(v => v > lo && v < hi);
+  const tstep = hi > 7 ? 2 : hi > 3.6 ? 1 : .5, ticks = []; for (let v = tstep; v < hi; v += tstep) if (v > lo) ticks.push(+v.toFixed(1));
   const xt = (since ? [1, 53, 105, 157] : [1, 13, 26, 39, 52, 78, 104, 130, 156]).filter(v => v <= maxW);
   return `<svg class="sline" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(S.h.name)}: median chase card and median mid card by week since release, against the typical set">
     ${ticks.map(v => `<line class="sgrid" x1="${pl}" x2="${w - pr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="sax" x="${pl - 4}" y="${Y(v) + 3}" text-anchor="end">${v.toFixed(1)}</text>`).join("")}
