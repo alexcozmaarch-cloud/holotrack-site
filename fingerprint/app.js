@@ -595,13 +595,25 @@ async function movers() {
    (Experiment 1) · 3 cards · 4 sealed. Facts and the model's numbers only: no buy / sell words, no card images, orange only
    for counted parameters / above fair / above the typical set. */
 const TYPICAL = { weeks: [1, 2, 4, 8, 13, 20, 26, 39, 52, 65, 78], v: [1, 1.00, 1.00, 1.02, 0.98, 0.86, 0.72, 0.69, 0.59, 0.62, 0.62] };   // Experiment 1, median chase card, 7 main sets 2024–26
+const TYPICAL_MID = { weeks: [1, 2, 4, 8, 13, 20, 26, 39, 52, 65, 78], v: [1, 1.00, 0.89, 0.79, 0.83, 0.79, 0.79, 0.81, 0.82, 0.82, 0.89] };   // Experiment 1, median mid card (lab 26 Nov: a second, lighter grey line)
+function curveAt(C, w) { const W = C.weeks, V = C.v; if (w <= W[0]) return V[0]; if (w >= W[W.length - 1]) return null;
+  for (let i = 1; i < W.length; i++) if (w <= W[i]) return V[i - 1] + (V[i] - V[i - 1]) * (w - W[i - 1]) / (W[i] - W[i - 1]); return null; }
+const SINCE0 = Date.parse("2024-02-01T00:00:00Z");           // (26 Nov, lab) older sets: "Since Feb 2024", week 1 = the week of 1 Feb 2024
+const isSince = S => S.line && S.line.mode === "since";
+function refAt(S, wk) { if (!isSince(S)) return typicalAt(wk); const i = S.line.weeks.indexOf(wk); return i >= 0 && S.line.era_chase ? S.line.era_chase[i] : null; }
+const sinceLabel = wk => new Date(SINCE0 + (wk - 1) * 6048e5).toLocaleDateString("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" });
 function typicalAt(w) { const W = TYPICAL.weeks, V = TYPICAL.v; if (w <= W[0]) return V[0]; if (w >= W[W.length - 1]) return null;
   for (let i = 1; i < W.length; i++) if (w <= W[i]) return V[i - 1] + (V[i] - V[i - 1]) * (w - W[i - 1]) / (W[i] - W[i - 1]); return null; }
 const SP_ON = "2026-11-30";                                  // Set premium (P79) counts from the switch-on refit
 const fmtDay = d => d ? new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "";
 function phaseChip(h) { if (!h || !h.phase) return ""; return `<span class="chip">${esc(h.phase)} · since ${fmtDay(h.phase_since)}</span>`; }
+// (26 Nov, lab) what the fair price uses (the cards' P79 contribution), for the typical card in this set; chase and mid
+// shown both when they differ by more than 0.02 log points
+const spSplit = h => h.set_premium_chase != null && h.set_premium_mid != null && Math.abs(Math.log(+h.set_premium_chase) - Math.log(+h.set_premium_mid)) > 0.02;
 function spText(h) { if (h.set_premium == null) return `<span class="spx">Set premium switches on ${fmtDay(SP_ON)}</span>`;
-  const r = +h.set_premium; return `<span class="spx ${r > 1 ? "up" : ""}"><b>${xm(r)}</b> · Set premium</span>`; }
+  const r = +h.set_premium;
+  if (spSplit(h)) return `<span class="spx ${r > 1 ? "up" : ""}">Set premium · chase <b>${xm(+h.set_premium_chase)}</b> · mid <b>${xm(+h.set_premium_mid)}</b></span>`;
+  return `<span class="spx ${r > 1 ? "up" : ""}"><b>${xm(r)}</b> · Set premium for the typical card in this set</span>`; }
 async function loadSets() {
   if (FP.sets) return FP.sets;
   return FP.sets = PREVIEW ? (await fetch("preview.json").then(r => r.json())).sets || []
@@ -634,26 +646,32 @@ async function sets() {
 function setLineSvg(S) {                                    // 2 · the set's line over the typical set (Experiment 1)
   const L = S.line; if (!L || !L.weeks || L.weeks.length < 2) return null;
   const W = L.weeks, lastW = W[W.length - 1], maxW = Math.max(26, Math.min(lastW, 160)), w = 340, h = 190, pl = 30, pr = 8, pt = 10, pb = 24;
-  const vals = [...L.chase, ...L.mid, ...TYPICAL.v].filter(v => v != null), lo = Math.max(0, Math.min(0.4, ...vals) - .05), hi = Math.max(1.3, ...vals) + .05;
+  const since = isSince(S), REF = since ? (L.era_chase || []) : TYPICAL.v;
+  const vals = [...L.chase, ...L.mid, ...REF, ...(since ? [] : TYPICAL_MID.v)].filter(v => v != null), lo = Math.max(0, Math.min(0.4, ...vals) - .05), hi = Math.max(1.3, ...vals) + .05;
   const X = wk => pl + (w - pl - pr) * (wk - 1) / (maxW - 1), Y = v => pt + (h - pt - pb) * (1 - (v - lo) / (hi - lo));
   const path = arr => { let d = "", on = false; W.forEach((wk, i) => { const v = arr[i]; if (v == null || wk > maxW) { on = false; return; } d += (on ? "L" : "M") + X(wk).toFixed(1) + "," + Y(v).toFixed(1); on = true; }); return d; };
-  let typ = ""; for (let wk = 1; wk <= Math.min(maxW, 78); wk++) { const v = typicalAt(wk); if (v != null) typ += (typ ? "L" : "M") + X(wk).toFixed(1) + "," + Y(v).toFixed(1); }
+  let typ = "", typm = "";
+  if (since) typ = path(L.era_chase || []);
+  else for (let wk = 1; wk <= Math.min(maxW, 78); wk++) { const v = typicalAt(wk), m = curveAt(TYPICAL_MID, wk);
+    if (v != null) typ += (typ ? "L" : "M") + X(wk).toFixed(1) + "," + Y(v).toFixed(1); if (m != null) typm += (typm ? "L" : "M") + X(wk).toFixed(1) + "," + Y(m).toFixed(1); }
   let fill = "";                                              // orange only where the set's chase line sits above the typical set
-  for (let i = 1; i < W.length; i++) { const a = W[i - 1], b = W[i], ca = L.chase[i - 1], cb = L.chase[i], ta = typicalAt(a), tb = typicalAt(b);
+  for (let i = 1; i < W.length; i++) { const a = W[i - 1], b = W[i], ca = L.chase[i - 1], cb = L.chase[i], ta = refAt(S, a), tb = refAt(S, b);
     if (ca == null || cb == null || ta == null || tb == null || b > maxW) continue;
     if (ca > ta || cb > tb) fill += `<path class="sabove" d="M${X(a)},${Y(Math.max(ca, ta))}L${X(b)},${Y(Math.max(cb, tb))}L${X(b)},${Y(tb)}L${X(a)},${Y(ta)}Z"/>`; }
-  const ev = (S.ev || []).filter(e => e.day && S.h.release_date).map(e => ({ ...e, wk: Math.floor((Date.parse(e.day) - Date.parse(S.h.release_date)) / 6048e5) + 1 })).filter(e => e.wk >= 1 && e.wk <= maxW && e.phase !== "during");
+  const t0 = since ? SINCE0 : Date.parse(S.h.release_date);
+  const ev = (S.ev || []).filter(e => e.day && S.h.release_date).map(e => ({ ...e, wk: Math.floor((Date.parse(e.day) - t0) / 6048e5) + 1 })).filter(e => e.wk >= 1 && e.wk <= maxW && e.phase !== "during");
   const ticks = [0.5, 1, 1.5, 2, 2.5, 3].filter(v => v > lo && v < hi);
-  const xt = [1, 13, 26, 39, 52, 78, 104, 130, 156].filter(v => v <= maxW);
+  const xt = (since ? [1, 53, 105, 157] : [1, 13, 26, 39, 52, 78, 104, 130, 156]).filter(v => v <= maxW);
   return `<svg class="sline" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(S.h.name)}: median chase card and median mid card by week since release, against the typical set">
     ${ticks.map(v => `<line class="sgrid" x1="${pl}" x2="${w - pr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="sax" x="${pl - 4}" y="${Y(v) + 3}" text-anchor="end">${v.toFixed(1)}</text>`).join("")}
-    ${xt.map(v => `<text class="sax" x="${X(v)}" y="${h - 8}" text-anchor="middle">${v === 1 ? "wk 1" : v}</text>`).join("")}
-    ${fill}<path class="styp" d="${typ}"/><path class="smid" d="${path(L.mid)}"/><path class="schase" d="${path(L.chase)}"/>
+    ${xt.map(v => `<text class="sax" x="${X(v)}" y="${h - 8}" text-anchor="${since && v === 1 ? "start" : "middle"}">${since ? sinceLabel(v) : v === 1 ? "wk 1" : v}</text>`).join("")}
+    ${fill}<path class="styp" d="${typ}"/>${typm ? `<path class="stypm" d="${typm}"/>` : ""}<path class="smid" d="${path(L.mid)}"/><path class="schase" d="${path(L.chase)}"/>
     ${ev.map(e => `<circle class="sev" cx="${X(e.wk)}" cy="${h - pb}" r="3.5"><title>${esc(e.label)} · ${fmtDay(e.day)}</title></circle>`).join("")}
     <line id="scur" class="scur" x1="0" x2="0" y1="${pt}" y2="${h - pb}" style="display:none"/><rect id="shit" x="${pl}" y="0" width="${w - pl - pr}" height="${h}" fill="transparent"/></svg>`;
 }
 function setReadout(S, wk) {
-  const L = S.line, i = L.weeks.indexOf(wk), c = i >= 0 ? L.chase[i] : null, m = i >= 0 ? L.mid[i] : null, t = typicalAt(wk);
+  const L = S.line, i = L.weeks.indexOf(wk), c = i >= 0 ? L.chase[i] : null, m = i >= 0 ? L.mid[i] : null, t = refAt(S, wk);
+  if (isSince(S)) return `<b>Since Feb 2024 · week ${wk}</b>${c != null ? ` · median chase card <b class="${t != null && c > t ? "upc" : ""}">${c.toFixed(2)}</b>` : ""}${m != null ? ` · median mid card ${m.toFixed(2)}` : ""}${t != null ? ` · its era ${t.toFixed(2)}` : ""}`;
   return `<b>Week ${wk}</b>${c != null ? ` · median chase card <b class="${t != null && c > t ? "upc" : ""}">${c.toFixed(2)}</b>` : ""}${m != null ? ` · median mid card ${m.toFixed(2)}` : ""}${t != null ? ` · typical set ${t.toFixed(2)}` : ""}`;
 }
 async function setScreen(id) {
@@ -665,10 +683,15 @@ async function setScreen(id) {
   const rank = h.rank_in_cohort ? `Set demand: ${ordinal(h.rank_in_cohort)} of ${h.of_cohort} sets of ${esc(h.cohort || "its years")}${h.rank_all ? ` · ${ordinal(h.rank_all)} of ${h.of_all} of all years` : ""}` : "";
   const waves = (h.reprints || []).map(r => `<li>Reprint wave · ${fmtDay(r.day)}${r.confidence === "low" ? " · low confidence" : ""}</li>`).join("");
   const line = setLineSvg(S);
-  const lineBox = line ? `<div class="box"><div class="label">The set's line · by week since release</div>${line}
+  const since = isSince(S), ERA = { "pre-2017": "before 2017", "2017–22": "2017–22", "2023+": "2023 on" }[S.line && S.line.era] || "its era";
+  const lineBox = line ? (since ? `<div class="box"><div class="label">Since Feb 2024</div>${line}
       <p class="sread" id="sread">${setReadout(S, S.line.weeks[S.line.weeks.length - 1])}</p>
-      <div class="skey"><span><i class="kc"></i>median chase card (${S.line.n_chase})</span><span><i class="km"></i>median mid card (${S.line.n_mid})</span><span><i class="kt"></i>typical of 7 main sets, 2024–26</span></div>
-      <p class="hint">Each card is indexed to its own weeks 1–5 (= 1.00). Orange where the set's chase cards sit above the typical set.</p></div>`
+      <div class="skey"><span><i class="kc"></i>median chase card (${S.line.n_chase})</span><span><i class="km"></i>median mid card (${S.line.n_mid})</span><span><i class="kt"></i>median chase card, sets from ${esc(ERA)}</span></div>
+      <p class="hint">Released ${fmtDay(rel)}, before our weekly history: shown since Feb 2024 against sets of its era. Each card is indexed to its own first 5 weeks of Feb 2024 (= 1.00). Orange where the set's chase cards sit above its era.</p></div>`
+    : `<div class="box"><div class="label">The set's line · by week since release</div>${line}
+      <p class="sread" id="sread">${setReadout(S, S.line.weeks[S.line.weeks.length - 1])}</p>
+      <div class="skey"><span><i class="kc"></i>median chase card (${S.line.n_chase})</span><span><i class="km"></i>median mid card (${S.line.n_mid})</span><span><i class="kt"></i>typical of 7 main sets, 2024–26</span><span><i class="ktm"></i>typical mid card</span></div>
+      <p class="hint">Each card is indexed to its own weeks 1–5 (= 1.00). Orange where the set's chase cards sit above the typical set.</p></div>`)
     : `<div class="box"><div class="label">The set's line</div><p class="why m">Released ${fmtDay(rel)}, before our weekly history begins (Feb 2024): there are no launch weeks to compare with the typical set.</p></div>`;
   FP.setSort = FP.setSort || "price";
   $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
@@ -685,7 +708,8 @@ async function setScreen(id) {
   $("spb").onclick = async () => { await texts(); FP.order = [79];
     FP.card = { h: { name: h.name, segment: "chase" }, parts: [], beside: [], setSheet: h.set_premium == null
       ? `<p>Counts from the ${fmtDay(SP_ON)} refit. Until then it is measured but doesn't move any fair price.</p>`
-      : `<b class="big ${h.set_premium > 1 ? "up" : ""}">${xm(+h.set_premium)}</b><p>The median pull of Set premium on the cards of ${esc(h.name)} at the latest refit.</p>` };
+      : spSplit(h) ? `<b class="big ${h.set_premium > 1 ? "up" : ""}">chase ${xm(+h.set_premium_chase)} · mid ${xm(+h.set_premium_mid)}</b><p>What Set premium adds to the fair price of the typical chase card and the typical mid card of ${esc(h.name)}, at the latest refit.</p>`
+      : `<b class="big ${h.set_premium > 1 ? "up" : ""}">${xm(+h.set_premium)}</b><p>What Set premium adds to the fair price of the typical card in ${esc(h.name)}, at the latest refit.</p>` };
     sheet(79); };
   document.querySelectorAll("[data-ss]").forEach(b => b.onclick = () => { FP.setSort = b.dataset.ss; document.querySelectorAll("[data-ss]").forEach(x => x.setAttribute("aria-selected", x === b)); setCards(S); });
   const svg = document.querySelector("svg.sline");
