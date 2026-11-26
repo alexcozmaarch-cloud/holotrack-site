@@ -133,11 +133,12 @@ async function collection() {
 const COUNTED = s => /^counted/.test(s || "");
 async function loadCard(id) {
   if (PREVIEW) { const P = await fetch("preview.json").then(r => r.json()); return P.cards[id] || null; }
-  const [h, parts, beside] = await Promise.all([
+  const [h, parts, beside, nick] = await Promise.all([
     q(sb.from("fp_card_header").select("*").eq("card_id", id)).then(r => r[0] || null),
     q(sb.from("fp_card_parts").select("n,name,family,contribution,raw,no_effect").eq("card_id", id)),
-    q(sb.from("fp_card_beside").select("n,name,value,raw,flag,detail").eq("card_id", id))]);
-  return h && { h, parts, beside };
+    q(sb.from("fp_card_beside").select("n,name,value,raw,flag,detail").eq("card_id", id)),
+    q(sb.from("fp_nicknames").select("nickname,source_name,source_url").eq("card_id", id)).catch(() => [])]);   // (26 Nov) curated nicknames
+  return h && { h, parts, beside, nick: (nick || [])[0] || null };
 }
 async function texts() {
   if (FP.texts) return FP.texts;
@@ -217,6 +218,7 @@ function sheet(n) {
     <div class="on"><div class="label">On this card</div>${on}</div>
     ${t.what ? `<h3>What it is</h3><p>${esc(t.what)}</p>` : ""}${t.how ? `<h3>How it's measured</h3><p>${esc(t.how)}</p>` : ""}
     ${t.low_note ? `<h3>Low</h3><p>${esc(t.low_note)}</p>` : ""}${t.high_note ? `<h3>High</h3><p>${esc(t.high_note)}</p>` : ""}
+    ${C.nick ? `<p class="sfoot">“${esc(C.nick.nickname)}” — the name collectors use for this printing. Source: <a href="${esc(C.nick.source_url)}" target="_blank" rel="noopener">${esc(C.nick.source_name)}</a></p>` : ""}
     <div class="snav">${prev != null ? `<button data-go="${prev}">‹ Previous</button>` : "<span></span>"}${next != null ? `<button data-go="${next}">Next ›</button>` : ""}</div>`;
   $("sheet").classList.add("on"); $("scrim").classList.add("on"); $("sheet").scrollTop = 0; flowHighlight(n);
   $("sdone").onclick = closeSheet; $("sheet").querySelectorAll("[data-go]").forEach(b => b.onclick = () => sheet(+b.dataset.go));
@@ -431,7 +433,7 @@ async function card(id) {
   if (!C) { $("view").innerHTML += `<p class="sub">This card has no figures in the model yet.</p>`; return; }
   FP.card = C; const h = C.h;
   $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
-    <h1 class="cardt">${esc(h.name)}</h1><p class="sub">${esc(h.set_name || h.set_id)} · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
+    <h1 class="cardt">${esc(h.name)}</h1>${C.nick ? `<p class="nick">Known to collectors as ${esc(C.nick.nickname)}</p>` : ""}<p class="sub">${esc(h.set_name || h.set_id)} · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
     <div class="segc" role="tablist"><button role="tab" data-p="today" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" data-p="why" aria-selected="false">Why</button>`}<button role="tab" data-p="hist" aria-selected="false">History</button></div>
     ${headerBox(h)}
     <div id="p-today"><div class="box flowbox">${flowSvg(C, T)}<p class="hint">Tap a string or a name, or pick from the list below</p></div>
