@@ -451,7 +451,7 @@ async function card(id) {
   if (!C) { $("view").innerHTML += `<p class="sub">This card has no figures in the model yet.</p>`; return; }
   FP.card = C; const h = C.h;
   $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
-    <h1 class="cardt">${esc(h.name)}</h1>${C.nick ? `<p class="nick">Known to collectors as ${esc(C.nick.nickname)}</p>` : ""}<p class="sub"><a class="setl" href="#set/${encodeURIComponent(h.set_id)}">${esc(h.set_name || h.set_id)}</a> · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
+    <h1 class="cardt">${esc(h.name)}</h1>${C.nick ? `<p class="nick">Known to collectors as ${esc(C.nick.nickname)}</p>` : ""}<p class="sub">${h.character ? `<a class="setl" href="#char/${encodeURIComponent(h.character)}">${esc(h.character)}</a> · ` : ""}<a class="setl" href="#set/${encodeURIComponent(h.set_id)}">${esc(h.set_name || h.set_id)}</a> · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
     <div class="segc" role="tablist"><button role="tab" data-p="today" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" data-p="why" aria-selected="false">Why</button>`}<button role="tab" data-p="hist" aria-selected="false">History</button></div>
     ${headerBox(h)}
     <div id="p-today"><div class="box flowbox">${flowSvg(C, T)}<p class="hint">Tap a string or a name, or pick from the list below</p></div>
@@ -666,12 +666,12 @@ function setLineSvg(S) {                                    // 2 · the set's li
     ${ticks.map(v => `<line class="sgrid" x1="${pl}" x2="${w - pr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="sax" x="${pl - 4}" y="${Y(v) + 3}" text-anchor="end">${v.toFixed(1)}</text>`).join("")}
     ${xt.map(v => `<text class="sax" x="${X(v)}" y="${h - 8}" text-anchor="${since && v === 1 ? "start" : "middle"}">${since ? sinceLabel(v) : v === 1 ? "wk 1" : v}</text>`).join("")}
     ${fill}<path class="styp" d="${typ}"/>${typm ? `<path class="stypm" d="${typm}"/>` : ""}<path class="smid" d="${path(L.mid)}"/><path class="schase" d="${path(L.chase)}"/>
-    ${ev.map(e => `<circle class="sev" cx="${X(e.wk)}" cy="${h - pb}" r="3.5"><title>${esc(e.label)} · ${fmtDay(e.day)}</title></circle>`).join("")}
+    ${ev.map(e => `<circle class="sev" cx="${X(e.wk)}" cy="${h - pb}" r="3.5"><title>${esc(e.label)} · ${fmtDay(e.day)}${e.tested ? " · " + esc(e.tested) : ""}</title></circle>`).join("")}
     <line id="scur" class="scur" x1="0" x2="0" y1="${pt}" y2="${h - pb}" style="display:none"/><rect id="shit" x="${pl}" y="0" width="${w - pl - pr}" height="${h}" fill="transparent"/></svg>`;
 }
 function setReadout(S, wk) {
   const L = S.line, i = L.weeks.indexOf(wk), c = i >= 0 ? L.chase[i] : null, m = i >= 0 ? L.mid[i] : null, t = refAt(S, wk);
-  if (isSince(S)) return `<b>Since Feb 2024 · week ${wk}</b>${c != null ? ` · median chase card <b class="${t != null && c > t ? "upc" : ""}">${c.toFixed(2)}</b>` : ""}${m != null ? ` · median mid card ${m.toFixed(2)}` : ""}${t != null ? ` · its era ${t.toFixed(2)}` : ""}`;
+  if (isSince(S)) return `<b>Since Feb 2024 · week ${wk}</b>${c != null ? ` · median chase card <b class="${t != null && c > t ? "upc" : ""}">${c.toFixed(2)}</b>` : ""}${m != null ? ` · median mid card ${m.toFixed(2)}` : ""}${t != null ? ` · ${S.refName || "its era"} ${t.toFixed(2)}` : ""}`;
   return `<b>Week ${wk}</b>${c != null ? ` · median chase card <b class="${t != null && c > t ? "upc" : ""}">${c.toFixed(2)}</b>` : ""}${m != null ? ` · median mid card ${m.toFixed(2)}` : ""}${t != null ? ` · typical set ${t.toFixed(2)}` : ""}`;
 }
 async function setScreen(id) {
@@ -720,6 +720,101 @@ async function setScreen(id) {
   await loadWeekly(S.cards.map(r => r.card_id)).catch(() => {});
   setCards(S); setSealed(S);
 }
+
+/* ---- M9 Character screen (26 Nov, lab Decided; Alex 14:5x "Character screen in the app") ----
+   1 header (dex · generation · species category P53; Character demand P1 for the typical card of this character; species
+   prior from 7 Dec) · 2 the character's line since Feb 2024 vs all characters · 3 cards by look · 4 artists (plain counts).
+   Same rules: no buy / sell words, no card images, orange only for counted parameters / above fair / above the band. */
+const SP_PRIOR_ON = "2026-12-07";
+const CATN = { regular: "Pokémon", "starter line": "Starter line", legendary: "Legendary", mythical: "Mythical", paradox: "Paradox", baby: "Baby", "ultra beast": "Ultra Beast", "pseudo-legendary": "Pseudo-legendary", eeveelution: "Eeveelution", mascot: "Mascot", trainer: "Trainer" };
+const LOOKG = ["special illustration", "illustration", "alt art", "full art", "gold / rainbow", "regular"];
+const catChip = h => `<span class="chip">${esc(CATN[h.category] || h.category || "")}</span>`;
+const demTxt = h => h.demand == null ? `<span class="spx">Character demand · not counted yet</span>` : `<span class="spx ${+h.demand > 1 ? "up" : ""}"><b>${xm(+h.demand)}</b> · Character demand · for the typical card of this character</span>`;
+async function loadChars() {
+  if (FP.chars) return FP.chars;
+  return FP.chars = PREVIEW ? (await fetch("preview.json").then(r => r.json())).chars || []
+    : await q(sb.from("fp_char_header").select("*").order("demand", { ascending: false, nullsFirst: false }).range(0, 1999));
+}
+async function loadChar(name) {
+  if (PREVIEW) { const P = await fetch("preview.json").then(r => r.json()); return (P.charScreens || {})[name] || null; }
+  const [h, line, ev, cards] = await Promise.all([
+    q(sb.from("fp_char_header").select("*").eq("character", name)).then(r => r[0] || null),
+    q(sb.from("fp_char_line").select("*").eq("character", name)).then(r => r[0] || null),
+    q(sb.from("fp_char_events").select("*").eq("character", name).order("day")),
+    q(sb.from("fp_char_cards").select("*").eq("character", name).range(0, 999))]);
+  return h && { h, line, ev, cards };
+}
+async function chars() {
+  $("view").innerHTML = head() + `<h1>Characters</h1><p class="sub">Loading…</p>`;
+  let L; try { L = await loadChars(); } catch (e) { L = []; }
+  if (FP.tab !== "chars") return;
+  const draw = f => { const rows = L.filter(c => !f || c.character.toLowerCase().includes(f.toLowerCase())).slice(0, 200);
+    $("chList").innerHTML = rows.length ? `<div class="list">${rows.map(c => `<button class="srow" data-ch="${esc(c.character)}"><span class="cm"><b>${esc(c.character)}</b>
+      <span>${c.dex ? "#" + c.dex + " · " : ""}${c.n_cards} card${c.n_cards === 1 ? "" : "s"} in the app</span><span class="srm">${catChip(c)}${c.demand != null ? ` <span class="spx ${+c.demand > 1 ? "up" : ""}">${xm(+c.demand)}</span>` : ""}</span></span>
+      <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`).join("")}</div>` : `<div class="box empty"><p>No character matches.</p></div>`;
+    document.querySelectorAll("#chList .srow").forEach(b => b.onclick = () => { location.hash = "char/" + encodeURIComponent(b.dataset.ch); }); };
+  $("view").innerHTML = head() + `<h1>Characters</h1><p class="sub">${L.length} characters with cards in the app · by Character demand</p>
+    <input id="chq" class="search" type="search" placeholder="Search characters" aria-label="Search characters"><div id="chList"></div>
+    <p class="foot">Character demand (P1) is what the fair price counts for the character, for its typical card. The species prior switches on with the ${fmtDay(SP_PRIOR_ON)} refit.</p>`;
+  $("chq").oninput = e => draw(e.target.value); draw("");
+}
+async function charScreen(name) {
+  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div><p class="sub">Loading…</p>`;
+  $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "chars"); };
+  let S; try { S = await loadChar(name); } catch (e) { S = null; }
+  if (!S) { $("view").innerHTML += `<p class="sub">This character has no cards in the model yet.</p>`; return; }
+  const h = S.h, thin = h.n_cards < 5;
+  // the line reuses the Set screen's "since Feb 2024" drawing, with all characters as the band
+  const L = S.line ? { ...S.line, mode: "since", era_chase: S.line.band } : null;
+  const SS = { h: { name: h.character, release_date: "2024-02-01" }, line: L, ev: S.ev || [], refName: "all characters" };
+  const line = L ? setLineSvg(SS) : null;
+  const lineBox = line ? `<div class="box"><div class="label">Since Feb 2024</div>${line}
+      <p class="sread" id="sread">${setReadout(SS, L.weeks[L.weeks.length - 1])}</p>
+      <div class="skey"><span><i class="kc"></i>median chase card (${L.n_chase || 0})</span><span><i class="km"></i>median mid card (${L.n_mid || 0})</span><span><i class="kt"></i>median chase card, all characters</span></div>
+      <p class="hint">Each card is indexed to its own first 5 weeks from Feb 2024 (= 1.00). Orange where this character's chase cards sit above all characters. Dots are events; tap one for what past events like it did.</p></div>`
+    : `<div class="box"><div class="label">Since Feb 2024</div><p class="why m">No weekly line yet for this character's chase or mid-tier cards.</p></div>`;
+  const evl = (S.ev || []).slice().reverse().slice(0, 6).map(e => `<li>${esc(e.label)} · ${fmtDay(e.day)}<br><span class="m">${esc(e.tested)}</span></li>`).join("");
+  FP.charSort = FP.charSort || "price";
+  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
+    <h1 class="cardt">${esc(h.character)}</h1><p class="sub">${h.role === "trainer" ? "Trainer" : `${h.dex ? "#" + h.dex : ""}${h.generation ? " · Gen " + h.generation : ""}`} · ${h.n_cards} card${h.n_cards === 1 ? "" : "s"} in the app</p>
+    <div class="box"><div class="shd2">${catChip(h)}<button class="spb" id="cdb">${demTxt(h)}</button></div>
+      <p class="hint">${new Date() < new Date(SP_PRIOR_ON) ? `Species prior switches on ${fmtDay(SP_PRIOR_ON)}.` : "Species prior: see the sheet."}${thin ? " Few cards yet: leans on the species prior." : ""}</p></div>
+    ${lineBox}
+    ${evl ? `<div class="box"><div class="label">Events</div><ul class="waves">${evl}</ul></div>` : ""}
+    <h2 class="sh2">Cards</h2><div class="segc" role="group">${[["price", "Price"], ["above", "Above fair"], ["move", "90 days"]].map(([v, l]) => `<button data-cs="${v}" aria-selected="${FP.charSort === v}">${l}</button>`).join("")}</div>
+    <div id="cCards"></div>
+    <h2 class="sh2">Artists</h2><div id="cArt"></div>
+    <p class="foot">TCGplayer market price · fair price from HoloTrack's model (weekly refit). Events: tested wording only. Artists: plain counts of this character's chase cards.</p>`;
+  $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "chars"); };
+  $("cdb").onclick = async () => { await texts(); FP.order = [1];
+    FP.card = { h: { name: h.character, segment: "chase" }, parts: [], beside: [], setSheet: h.demand == null
+      ? `<p>Not counted yet for this character.</p>`
+      : `<b class="big ${+h.demand > 1 ? "up" : ""}">${xm(+h.demand)}</b><p>What Character demand adds to the fair price of the typical card of ${esc(h.character)}, at the latest refit (median of ${h.n_demand} cards).${thin ? " Few cards yet: this leans on the species prior from " + fmtDay(SP_PRIOR_ON) + "." : ""}</p>` };
+    sheet(1); };
+  document.querySelectorAll("[data-cs]").forEach(b => b.onclick = () => { FP.charSort = b.dataset.cs; document.querySelectorAll("[data-cs]").forEach(x => x.setAttribute("aria-selected", x === b)); charCards(S); });
+  const svg = document.querySelector("svg.sline");
+  if (svg && L) { const move = e => { const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 340, W = L.weeks, maxW = Math.max(26, Math.min(W[W.length - 1], 160));
+      let wk = Math.round(1 + (x - 30) / (340 - 38) * (maxW - 1)); wk = Math.max(W[0], Math.min(W[W.length - 1], wk));
+      const c = $("scur"); c.style.display = ""; const xx = 30 + (340 - 38) * (wk - 1) / (maxW - 1); c.setAttribute("x1", xx); c.setAttribute("x2", xx); $("sread").innerHTML = setReadout(SS, wk); };
+    svg.addEventListener("pointermove", move); svg.addEventListener("pointerdown", move); }
+  const art = {}; S.cards.filter(c => c.segment === "chase" && c.artist).forEach(c => { art[c.artist] = (art[c.artist] || 0) + 1; });
+  const A = Object.entries(art).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  $("cArt").innerHTML = A.length ? `<div class="box"><ul class="waves">${A.map(([a, n]) => `<li>${esc(a)} · ${n} card${n === 1 ? "" : "s"}</li>`).join("")}</ul></div>` : `<div class="box empty"><p>No chase cards of this character in the app.</p></div>`;
+  await loadWeekly(S.cards.map(r => r.card_id)).catch(() => {});
+  charCards(S);
+}
+function charCards(S) {
+  const by = { price: (a, b) => (b.market_chf || 0) - (a.market_chf || 0), above: (a, b) => (b.l ?? -9) - (a.l ?? -9), move: (a, b) => (b.chg90 ?? -9) - (a.chg90 ?? -9) }[FP.charSort];
+  const row = c => `<button class="crow" data-id="${esc(c.card_id)}"><span class="mini">${miniOf(c.card_id, c.name)}</span>
+    <span class="cm"><b>${esc(c.name)}</b>${c.nickname ? `<span class="nick">Known to collectors as ${esc(c.nickname)}</span>` : ""}<span>${esc(c.set_name || c.set_id)} · ${esc(c.num)}</span>
+    <span class="cv">${chf(c.market_chf)}${c.chg90 != null ? `<i>${c.chg90 >= 0 ? "+" : "−"}${Math.abs(c.chg90 * 100).toFixed(1)} % in 90 days</i>` : ""}</span>${fairLine(c)}</span>
+    <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`;
+  const main = S.cards.filter(c => c.segment !== "low"), low = S.cards.filter(c => c.segment === "low").sort(by);
+  const groups = LOOKG.map(g => [g, main.filter(c => c.look_group === g).sort(by)]).filter(([, L]) => L.length);
+  $("cCards").innerHTML = (groups.length ? groups.map(([g, L]) => `<div class="label lg">${esc(g.charAt(0).toUpperCase() + g.slice(1))} · ${L.length}</div><div class="list">${L.map(row).join("")}</div>`).join("") : `<div class="box empty"><p>No chase or mid-tier cards of this character in the app.</p></div>`)
+    + (low.length ? `<details class="lowd"><summary>${low.length} low-tier card${low.length === 1 ? "" : "s"}</summary><div class="list">${low.map(row).join("")}</div></details>` : "");
+  document.querySelectorAll("#cCards .crow").forEach(b => b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); });
+}
 const KINDN = { booster_box: "Booster box", etb: "Elite Trainer Box", booster_bundle: "Booster bundle", booster: "Booster pack", tin: "Tin", blister: "Blister", collection: "Collection", theme_deck: "Theme deck", other: "Other" };
 const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
 function setCards(S) {
@@ -761,11 +856,13 @@ const TABS = {
   movers,
   compare,
   sets,
+  chars,
 };
 function route() {
   const h = decodeURIComponent((location.hash || "").replace(/^#/, ""));
   if (h.startsWith("card/")) { FP.tab = "collection"; card(h.slice(5)); }
   else if (h.startsWith("set/")) { FP.tab = "sets"; setScreen(h.slice(4)); }
+  else if (h.startsWith("char/")) { FP.tab = "chars"; charScreen(h.slice(5)); }
   else { FP.tab = TABS[h] ? h : "collection"; TABS[FP.tab](); }
   document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-current", b.dataset.tab === FP.tab ? "page" : "false"));
   window.scrollTo(0, 0);
