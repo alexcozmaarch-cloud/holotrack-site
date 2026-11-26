@@ -50,7 +50,7 @@ h1{margin:6px 0 2px;font-size:34px;line-height:41px;font-weight:700;letter-spaci
 .gate button{width:100%;margin-top:18px;min-height:48px;border:0;border-radius:12px;background:var(--ink);color:var(--bg);font:600 17px var(--sf);cursor:pointer}
 .gate .msg{min-height:20px;margin-top:12px;font-size:14px;color:var(--muted)}
 /* tab bar */
-.tabbar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:.5px solid var(--rule);display:grid;grid-template-columns:repeat(3,1fr);
+.tabbar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:.5px solid var(--rule);display:grid;grid-template-columns:repeat(4,1fr);
   padding:6px max(8px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 6px) max(8px,env(safe-area-inset-left,0px));z-index:5}
 .tabbar button{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:50px;font-size:10px;font-weight:500;color:var(--muted)}
 .tabbar button[aria-current="page"]{color:var(--ink)}
@@ -187,6 +187,31 @@ em.mv{color:var(--ink)}
 .fl{font-size:13px;color:var(--muted)}.fl.up{color:var(--fp-up);font-weight:600}
 .mvtop{margin:0 4px 10px;font-size:15px;font-weight:600}
 .phk{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:6px;font-size:12px;color:var(--muted)}.phk span{display:flex;align-items:center;gap:3px}.phk i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+/* (26 Nov) M8 Set screen */
+.srow{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:grid;grid-template-columns:minmax(0,1fr) 8px;gap:12px;align-items:center;padding:12px 14px;border-bottom:.5px solid var(--rule)}
+.srow:last-child{border-bottom:0}.srow:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.srm{margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.spx{font-size:13px;color:var(--muted)}.spx b{font-weight:700;color:var(--gr-3)}.spx.up b,.spx.up{color:var(--fp-up)}
+.search{box-sizing:border-box;width:100%;font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:0;background:var(--fill);color:var(--ink);margin:0 0 12px}
+.setl{color:inherit;text-decoration:underline;text-decoration-color:var(--gr-2);text-underline-offset:3px}
+.shd2{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.spb{all:unset;cursor:pointer;padding:6px 0}.spb:focus-visible{outline:2px solid var(--ink)}
+.waves{margin:10px 0 0;padding:0 0 0 18px;font-size:13px;color:var(--muted)}
+.srank{margin:10px 0 0;font-size:13px;color:var(--muted)}
+.sh2{font-size:20px;margin:24px 4px 10px}
+svg.sline,svg.sseal{width:100%;height:auto;display:block;margin-top:8px;touch-action:none}
+.sgrid{stroke:var(--rule);stroke-width:1}.sax{font:500 9px var(--mono);fill:var(--muted)}
+.styp{fill:none;stroke:var(--gr-1);stroke-width:9;stroke-linecap:round;stroke-linejoin:round}
+.schase{fill:none;stroke:var(--gr-3);stroke-width:2.2;stroke-linejoin:round}.smid{fill:none;stroke:var(--gr-2);stroke-width:1.5;stroke-dasharray:4 3}
+.sabove{fill:var(--fp-1);opacity:.8}.sev{fill:var(--ink)}.scur{stroke:var(--ink);stroke-width:1}
+.sread{margin:8px 0 0;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.sread b{color:var(--ink)}.sread b.upc{color:var(--fp-up)}
+.skey{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}.skey i{display:inline-block;width:16px;height:0;vertical-align:middle;margin-right:5px;border-top:2px solid}
+.skey .kc{border-color:var(--gr-3)}.skey .km{border-top:2px dashed var(--gr-2)}.skey .kt{border-top:6px solid var(--gr-1);border-radius:3px}
+.skey .kp{border-color:var(--ink)}.skey .kk{border-top:2px dashed var(--gr-2)}.skey .ks{border-color:var(--gr-3)}
+.sp{fill:none;stroke:var(--ink);stroke-width:2}.sk{fill:none;stroke:var(--gr-2);stroke-width:1.5;stroke-dasharray:4 3}.sc{fill:none;stroke:var(--gr-3);stroke-width:1.5}
+.sbx b{font-size:15px}.sub2{display:block;font-size:12px;color:var(--muted)}.sfact{margin:8px 0 0;font-size:13px}
+details.lowd{margin-top:10px}details.lowd summary{cursor:pointer;font-size:14px;color:var(--muted);padding:8px 4px}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
@@ -211,6 +236,7 @@ em.mv{color:var(--ink)}
   <nav class="tabbar" aria-label="Fingerprint">
     <button data-tab="collection"><svg viewBox="0 0 26 26"><rect x="4" y="5" width="7" height="16" rx="1.5"/><rect x="15" y="5" width="7" height="16" rx="1.5"/></svg>Collection</button>
     <button data-tab="movers"><svg viewBox="0 0 26 26"><path d="M4 18l6-6 4 4 8-8"/><path d="M17 8h5v5"/></svg>Movers</button>
+    <button data-tab="sets"><svg viewBox="0 0 26 26"><rect x="5" y="4" width="13" height="17" rx="2"/><path d="M9 21v1.5a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5V9a1.5 1.5 0 0 0-1.5-1.5H18"/></svg>Sets</button>
     <button data-tab="compare"><svg viewBox="0 0 26 26"><path d="M13 4v18M5 9h6M5 13h6M5 17h6M15 9h6M15 13h4M15 17h5"/></svg>Compare</button>
   </nav>
 </div>

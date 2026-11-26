@@ -115,7 +115,10 @@ async function collection() {
   }
   await loadWeekly(rows.map(r => r.card_id)).catch(() => {});
   if (FP.tab !== "collection") return;
-  $("view").innerHTML = head() + `<h1>Collection</h1><p class="sub">${n.toLocaleString("en-US")} cards · market ${chf(tot)}</p>
+  FP.cgroup = FP.cgroup || "card";
+  const grp = `<div class="segc" role="group"><button data-cg="card" aria-selected="${FP.cgroup === "card"}">By card</button><button data-cg="set" aria-selected="${FP.cgroup === "set"}">By set</button></div>`;
+  if (FP.cgroup === "set") { await collectionBySet(rows, n, tot, grp); return; }
+  $("view").innerHTML = head() + `<h1>Collection</h1><p class="sub">${n.toLocaleString("en-US")} cards · market ${chf(tot)}</p>${grp}
     <div class="list">${rows.map(r => `<button class="crow" data-id="${esc(r.card_id)}">
       <span class="mini">${miniSvg(r)}</span>
       <span class="cm"><b>${esc(r.name)}${r.qty > 1 ? ` <span style="color:var(--muted);font-weight:500">×${r.qty}</span>` : ""}</b>
@@ -128,6 +131,20 @@ async function collection() {
     if (g) breathers.push({ el: g, per: period(r.sales_4w), depth: 0.03 });     // half depth for the minis
     b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); };
   });
+  cgroupBind();
+}
+function cgroupBind() { document.querySelectorAll("[data-cg]").forEach(b => b.onclick = () => { FP.cgroup = b.dataset.cg; collection(); }); }
+async function collectionBySet(rows, n, tot, grp) {           // (26 Nov, Set screen) Collection → group by set → set row
+  let L = []; try { L = await loadSets(); } catch (e) { }
+  if (FP.tab !== "collection") return;
+  const info = Object.fromEntries(L.map(s => [s.set_id, s])), by = {};
+  rows.forEach(r => { (by[r.set_id] = by[r.set_id] || { set_id: r.set_id, name: r.set_name || r.set_id, n: 0, mkt: 0 }); by[r.set_id].n += (r.qty || 1); by[r.set_id].mkt += (r.market_chf || 0) * (r.qty || 1); });
+  const G = Object.values(by).sort((a, b) => b.mkt - a.mkt);
+  $("view").innerHTML = head() + `<h1>Collection</h1><p class="sub">${n.toLocaleString("en-US")} cards in ${G.length} sets · market ${chf(tot)}</p>${grp}
+    <div class="list">${G.map(g => `<button class="srow" data-set="${esc(g.set_id)}"><span class="cm"><b>${esc(g.name)}</b><span>${g.n} card${g.n === 1 ? "" : "s"} · market ${chf(g.mkt)}</span>
+      <span class="srm">${phaseChip(info[g.set_id])}</span></span><svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`).join("")}</div>`;
+  document.querySelectorAll(".srow").forEach(b => b.onclick = () => { location.hash = "set/" + encodeURIComponent(b.dataset.set); });
+  cgroupBind();
 }
 /* ---------- card → Today (spec §3.1, §4) ---------- */
 const COUNTED = s => /^counted/.test(s || "");
@@ -212,6 +229,7 @@ function sheet(n) {
   else if (st === "empty") on = `<p>Empty because ${esc(t.empty_reason || "no data source exists yet")}.</p>`;
   else if (st === "copy") on = `<p>Only for a copy you own: add condition or grade to your copy to see it.</p>`;
   else on = `<p>Collected for every card; not yet part of the fair price.</p>`;
+  if (C.setSheet) on = C.setSheet;                       // (26 Nov, Set screen) P79 read for the whole set
   const i = FP.order.indexOf(n), prev = FP.order[i - 1], next = FP.order[i + 1];
   $("sheet").innerHTML = `<div class="grab"></div><div class="shd"><span class="label">P${n} · ${esc((t.family || "").toUpperCase())}</span><button id="sdone">Done</button></div>
     <h2 id="s-name">${esc(t.name)}</h2><span class="chip ${st === "counted" ? "ink" : ""}">${CHIP[st] || esc(st)}</span>
@@ -433,7 +451,7 @@ async function card(id) {
   if (!C) { $("view").innerHTML += `<p class="sub">This card has no figures in the model yet.</p>`; return; }
   FP.card = C; const h = C.h;
   $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
-    <h1 class="cardt">${esc(h.name)}</h1>${C.nick ? `<p class="nick">Known to collectors as ${esc(C.nick.nickname)}</p>` : ""}<p class="sub">${esc(h.set_name || h.set_id)} · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
+    <h1 class="cardt">${esc(h.name)}</h1>${C.nick ? `<p class="nick">Known to collectors as ${esc(C.nick.nickname)}</p>` : ""}<p class="sub"><a class="setl" href="#set/${encodeURIComponent(h.set_id)}">${esc(h.set_name || h.set_id)}</a> · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
     <div class="segc" role="tablist"><button role="tab" data-p="today" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" data-p="why" aria-selected="false">Why</button>`}<button role="tab" data-p="hist" aria-selected="false">History</button></div>
     ${headerBox(h)}
     <div id="p-today"><div class="box flowbox">${flowSvg(C, T)}<p class="hint">Tap a string or a name, or pick from the list below</p></div>
@@ -571,14 +589,159 @@ async function movers() {
     : `<div class="box empty"><p>No card moved this way with enough sales in this window.</p></div>`);
   document.querySelectorAll("#mvList .crow").forEach(b => b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); });
 }
+/* ---------- Sets (M8, 26 Nov — lab Decided, Alex 09:20 "ok lets start with the set screen") ----------
+   Ways in: the set name on a card's Today header · Collection → By set · the Sets tab (search + list by release date).
+   1 header (life-cycle chip P32, reprint waves P58, Set premium P79, set-demand ranks) · 2 the set's line vs the typical set
+   (Experiment 1) · 3 cards · 4 sealed. Facts and the model's numbers only: no buy / sell words, no card images, orange only
+   for counted parameters / above fair / above the typical set. */
+const TYPICAL = { weeks: [1, 2, 4, 8, 13, 20, 26, 39, 52, 65, 78], v: [1, 1.00, 1.00, 1.02, 0.98, 0.86, 0.72, 0.69, 0.59, 0.62, 0.62] };   // Experiment 1, median chase card, 7 main sets 2024–26
+function typicalAt(w) { const W = TYPICAL.weeks, V = TYPICAL.v; if (w <= W[0]) return V[0]; if (w >= W[W.length - 1]) return null;
+  for (let i = 1; i < W.length; i++) if (w <= W[i]) return V[i - 1] + (V[i] - V[i - 1]) * (w - W[i - 1]) / (W[i] - W[i - 1]); return null; }
+const SP_ON = "2026-11-30";                                  // Set premium (P79) counts from the switch-on refit
+const fmtDay = d => d ? new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "";
+function phaseChip(h) { if (!h || !h.phase) return ""; return `<span class="chip">${esc(h.phase)} · since ${fmtDay(h.phase_since)}</span>`; }
+function spText(h) { if (h.set_premium == null) return `<span class="spx">Set premium switches on ${fmtDay(SP_ON)}</span>`;
+  const r = +h.set_premium; return `<span class="spx ${r > 1 ? "up" : ""}"><b>${xm(r)}</b> · Set premium</span>`; }
+async function loadSets() {
+  if (FP.sets) return FP.sets;
+  return FP.sets = PREVIEW ? (await fetch("preview.json").then(r => r.json())).sets || []
+    : await q(sb.from("fp_set_header").select("set_id,name,serie,release_date,n_cards,phase,phase_since,set_premium").order("release_date", { ascending: false }).range(0, 999));
+}
+async function loadSet(id) {
+  if (PREVIEW) { const P = await fetch("preview.json").then(r => r.json()); return (P.setScreens || {})[id] || null; }
+  const [h, line, ev, cards, sealed] = await Promise.all([
+    q(sb.from("fp_set_header").select("*").eq("set_id", id)).then(r => r[0] || null),
+    q(sb.from("fp_set_line").select("*").eq("set_id", id)).then(r => r[0] || null),
+    q(sb.from("fp_set_events").select("*").eq("set_id", id).order("day")),
+    q(sb.from("fp_set_cards").select("*").eq("set_id", id).range(0, 999)),
+    q(sb.from("fp_set_sealed").select("*").eq("set_id", id))]);
+  return h && { h, line, ev, cards, sealed };
+}
+async function sets() {
+  $("view").innerHTML = head() + `<h1>Sets</h1><p class="sub">Loading…</p>`;
+  let L; try { L = await loadSets(); } catch (e) { L = []; }
+  if (FP.tab !== "sets") return;
+  const draw = f => { const rows = L.filter(s => !f || (s.name + " " + s.set_id).toLowerCase().includes(f.toLowerCase()));
+    $("stList").innerHTML = rows.length ? `<div class="list">${rows.map(s => `<button class="srow" data-set="${esc(s.set_id)}"><span class="cm"><b>${esc(s.name)}</b>
+      <span>${fmtDay(s.release_date)} · ${s.n_cards} card${s.n_cards === 1 ? "" : "s"} in the app</span><span class="srm">${phaseChip(s)}${s.set_premium != null ? ` <span class="spx ${s.set_premium > 1 ? "up" : ""}">${xm(+s.set_premium)}</span>` : ""}</span></span>
+      <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`).join("")}</div>` : `<div class="box empty"><p>No set matches.</p></div>`;
+    document.querySelectorAll("#stList .srow").forEach(b => b.onclick = () => { location.hash = "set/" + encodeURIComponent(b.dataset.set); }); };
+  $("view").innerHTML = head() + `<h1>Sets</h1><p class="sub">${L.length} sets with cards in the app · newest first</p>
+    <input id="stq" class="search" type="search" placeholder="Search sets" aria-label="Search sets"><div id="stList"></div>
+    <p class="foot">Phase from HoloTrack's set events (new print / in print / out of print). Set premium switches on with the ${fmtDay(SP_ON)} refit.</p>`;
+  $("stq").oninput = e => draw(e.target.value); draw("");
+}
+function setLineSvg(S) {                                    // 2 · the set's line over the typical set (Experiment 1)
+  const L = S.line; if (!L || !L.weeks || L.weeks.length < 2) return null;
+  const W = L.weeks, lastW = W[W.length - 1], maxW = Math.max(26, Math.min(lastW, 160)), w = 340, h = 190, pl = 30, pr = 8, pt = 10, pb = 24;
+  const vals = [...L.chase, ...L.mid, ...TYPICAL.v].filter(v => v != null), lo = Math.max(0, Math.min(0.4, ...vals) - .05), hi = Math.max(1.3, ...vals) + .05;
+  const X = wk => pl + (w - pl - pr) * (wk - 1) / (maxW - 1), Y = v => pt + (h - pt - pb) * (1 - (v - lo) / (hi - lo));
+  const path = arr => { let d = "", on = false; W.forEach((wk, i) => { const v = arr[i]; if (v == null || wk > maxW) { on = false; return; } d += (on ? "L" : "M") + X(wk).toFixed(1) + "," + Y(v).toFixed(1); on = true; }); return d; };
+  let typ = ""; for (let wk = 1; wk <= Math.min(maxW, 78); wk++) { const v = typicalAt(wk); if (v != null) typ += (typ ? "L" : "M") + X(wk).toFixed(1) + "," + Y(v).toFixed(1); }
+  let fill = "";                                              // orange only where the set's chase line sits above the typical set
+  for (let i = 1; i < W.length; i++) { const a = W[i - 1], b = W[i], ca = L.chase[i - 1], cb = L.chase[i], ta = typicalAt(a), tb = typicalAt(b);
+    if (ca == null || cb == null || ta == null || tb == null || b > maxW) continue;
+    if (ca > ta || cb > tb) fill += `<path class="sabove" d="M${X(a)},${Y(Math.max(ca, ta))}L${X(b)},${Y(Math.max(cb, tb))}L${X(b)},${Y(tb)}L${X(a)},${Y(ta)}Z"/>`; }
+  const ev = (S.ev || []).filter(e => e.day && S.h.release_date).map(e => ({ ...e, wk: Math.floor((Date.parse(e.day) - Date.parse(S.h.release_date)) / 6048e5) + 1 })).filter(e => e.wk >= 1 && e.wk <= maxW && e.phase !== "during");
+  const ticks = [0.5, 1, 1.5, 2, 2.5, 3].filter(v => v > lo && v < hi);
+  const xt = [1, 13, 26, 39, 52, 78, 104, 130, 156].filter(v => v <= maxW);
+  return `<svg class="sline" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(S.h.name)}: median chase card and median mid card by week since release, against the typical set">
+    ${ticks.map(v => `<line class="sgrid" x1="${pl}" x2="${w - pr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="sax" x="${pl - 4}" y="${Y(v) + 3}" text-anchor="end">${v.toFixed(1)}</text>`).join("")}
+    ${xt.map(v => `<text class="sax" x="${X(v)}" y="${h - 8}" text-anchor="middle">${v === 1 ? "wk 1" : v}</text>`).join("")}
+    ${fill}<path class="styp" d="${typ}"/><path class="smid" d="${path(L.mid)}"/><path class="schase" d="${path(L.chase)}"/>
+    ${ev.map(e => `<circle class="sev" cx="${X(e.wk)}" cy="${h - pb}" r="3.5"><title>${esc(e.label)} · ${fmtDay(e.day)}</title></circle>`).join("")}
+    <line id="scur" class="scur" x1="0" x2="0" y1="${pt}" y2="${h - pb}" style="display:none"/><rect id="shit" x="${pl}" y="0" width="${w - pl - pr}" height="${h}" fill="transparent"/></svg>`;
+}
+function setReadout(S, wk) {
+  const L = S.line, i = L.weeks.indexOf(wk), c = i >= 0 ? L.chase[i] : null, m = i >= 0 ? L.mid[i] : null, t = typicalAt(wk);
+  return `<b>Week ${wk}</b>${c != null ? ` · median chase card <b class="${t != null && c > t ? "upc" : ""}">${c.toFixed(2)}</b>` : ""}${m != null ? ` · median mid card ${m.toFixed(2)}` : ""}${t != null ? ` · typical set ${t.toFixed(2)}` : ""}`;
+}
+async function setScreen(id) {
+  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div><p class="sub">Loading…</p>`;
+  $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "sets"); };
+  let S; try { S = await loadSet(id); } catch (e) { S = null; }
+  if (!S) { $("view").innerHTML += `<p class="sub">This set has no cards in the model yet.</p>`; return; }
+  const h = S.h, rel = h.release_date;
+  const rank = h.rank_in_cohort ? `Set demand: ${ordinal(h.rank_in_cohort)} of ${h.of_cohort} sets of ${esc(h.cohort || "its years")}${h.rank_all ? ` · ${ordinal(h.rank_all)} of ${h.of_all} of all years` : ""}` : "";
+  const waves = (h.reprints || []).map(r => `<li>Reprint wave · ${fmtDay(r.day)}${r.confidence === "low" ? " · low confidence" : ""}</li>`).join("");
+  const line = setLineSvg(S);
+  const lineBox = line ? `<div class="box"><div class="label">The set's line · by week since release</div>${line}
+      <p class="sread" id="sread">${setReadout(S, S.line.weeks[S.line.weeks.length - 1])}</p>
+      <div class="skey"><span><i class="kc"></i>median chase card (${S.line.n_chase})</span><span><i class="km"></i>median mid card (${S.line.n_mid})</span><span><i class="kt"></i>typical of 7 main sets, 2024–26</span></div>
+      <p class="hint">Each card is indexed to its own weeks 1–5 (= 1.00). Orange where the set's chase cards sit above the typical set.</p></div>`
+    : `<div class="box"><div class="label">The set's line</div><p class="why m">Released ${fmtDay(rel)}, before our weekly history begins (Feb 2024): there are no launch weeks to compare with the typical set.</p></div>`;
+  FP.setSort = FP.setSort || "price";
+  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
+    <h1 class="cardt">${esc(h.name)}</h1><p class="sub">${esc(SERIE[h.serie] || h.serie || "")} · released ${fmtDay(rel)} · ${h.n_cards} card${h.n_cards === 1 ? "" : "s"} in the app</p>
+    <div class="box"><div class="shd2">${phaseChip(h)}<button class="spb" id="spb">${spText(h)}</button></div>
+      ${waves ? `<ul class="waves">${waves}</ul>` : ""}${h.phase_confidence === "low" ? `<p class="hint">Phase dates are low confidence (estimated from the release date).</p>` : ""}
+      ${rank ? `<p class="srank">${rank}</p>` : ""}</div>
+    ${lineBox}
+    <h2 class="sh2">Cards</h2><div class="segc" role="group">${[["price", "Price"], ["above", "Above fair"], ["move", "90 days"]].map(([v, l]) => `<button data-ss="${v}" aria-selected="${FP.setSort === v}">${l}</button>`).join("")}</div>
+    <div id="sCards"></div>
+    <h2 class="sh2">Sealed</h2><div id="sSealed"></div>
+    <p class="foot">TCGplayer market price · fair price from HoloTrack's model (weekly refit). The set's line: TCGplayer archive + HoloTrack nightly, weekly, one source end to end.</p>`;
+  $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "sets"); };
+  $("spb").onclick = async () => { await texts(); FP.order = [79];
+    FP.card = { h: { name: h.name, segment: "chase" }, parts: [], beside: [], setSheet: h.set_premium == null
+      ? `<p>Counts from the ${fmtDay(SP_ON)} refit. Until then it is measured but doesn't move any fair price.</p>`
+      : `<b class="big ${h.set_premium > 1 ? "up" : ""}">${xm(+h.set_premium)}</b><p>The median pull of Set premium on the cards of ${esc(h.name)} at the latest refit.</p>` };
+    sheet(79); };
+  document.querySelectorAll("[data-ss]").forEach(b => b.onclick = () => { FP.setSort = b.dataset.ss; document.querySelectorAll("[data-ss]").forEach(x => x.setAttribute("aria-selected", x === b)); setCards(S); });
+  const svg = document.querySelector("svg.sline");
+  if (svg) { const move = e => { const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 340, L = S.line.weeks, maxW = Math.max(26, Math.min(L[L.length - 1], 160));
+      let wk = Math.round(1 + (x - 30) / (340 - 38) * (maxW - 1)); wk = Math.max(L[0], Math.min(L[L.length - 1], wk));
+      const c = $("scur"); c.style.display = ""; const xx = 30 + (340 - 38) * (wk - 1) / (maxW - 1); c.setAttribute("x1", xx); c.setAttribute("x2", xx); $("sread").innerHTML = setReadout(S, wk); };
+    svg.addEventListener("pointermove", move); svg.addEventListener("pointerdown", move); }
+  await loadWeekly(S.cards.map(r => r.card_id)).catch(() => {});
+  setCards(S); setSealed(S);
+}
+const KINDN = { booster_box: "Booster box", etb: "Elite Trainer Box", booster_bundle: "Booster bundle", booster: "Booster pack", tin: "Tin", blister: "Blister", collection: "Collection", theme_deck: "Theme deck", other: "Other" };
+const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
+function setCards(S) {
+  const by = { price: (a, b) => (b.market_chf || 0) - (a.market_chf || 0), above: (a, b) => (b.l ?? -9) - (a.l ?? -9), move: (a, b) => (b.chg90 ?? -9) - (a.chg90 ?? -9) }[FP.setSort];
+  const main = S.cards.filter(c => c.segment !== "low").sort(by), low = S.cards.filter(c => c.segment === "low").sort(by);
+  const row = c => `<button class="crow" data-id="${esc(c.card_id)}"><span class="mini">${miniOf(c.card_id, c.name)}</span>
+    <span class="cm"><b>${esc(c.name)}</b><span>${LOOK[c.look] || esc(c.look)} · ${esc(c.num)}</span>
+    <span class="cv">${chf(c.market_chf)}${c.chg90 != null ? `<i>${c.chg90 >= 0 ? "+" : "−"}${Math.abs(c.chg90 * 100).toFixed(1)} % in 90 days</i>` : ""}</span>${fairLine(c)}</span>
+    <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`;
+  $("sCards").innerHTML = (main.length ? `<div class="list">${main.map(row).join("")}</div>` : `<div class="box empty"><p>No chase or mid-tier cards of this set in the app.</p></div>`)
+    + (low.length ? `<details class="lowd"><summary>${low.length} low-tier card${low.length === 1 ? "" : "s"}</summary><div class="list">${low.map(row).join("")}</div></details>` : "");
+  document.querySelectorAll("#sCards .crow").forEach(b => b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); });
+}
+// sealed_launch stores (a) % vs its start, (b) % vs the typical product of its kind, (c) % vs its set's singles; the kind's and the
+// cards' own lines since the start follow from them: (1 + a) / (1 + b) − 1 and (1 + a) / (1 + c) − 1
+const sealedLines = s => { const a = s.vs_launch || [], rel = r => a.map((v, i) => v == null || r[i] == null ? null : ((1 + v / 100) / (1 + r[i] / 100) - 1) * 100);
+  return { p: a, k: rel(s.vs_kind || []), c: rel(s.vs_cards || []) }; };
+function sealedSvg(s) {                                     // three lines since launch, in %: the product, its kind, the set's cards — no phase labels
+  const n = (s.months || []).length; if (n < 2) return "";
+  const S = sealedLines(s), w = 320, h = 120, p = 6, all = [...S.p, ...S.k, ...S.c].filter(v => v != null);
+  const lo = Math.min(-10, ...all), hi = Math.max(10, ...all), X = i => p + (w - 2 * p) * i / (n - 1), Y = v => p + (h - 2 * p) * (1 - (v - lo) / (hi - lo));
+  const pth = a => { let d = "", on = false; a.forEach((v, i) => { if (v == null) { on = false; return; } d += (on ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1); on = true; }); return d; };
+  return `<svg class="sseal" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(s.name)} since ${s.launch ? "launch" : "Feb 2024"}, against its kind and the set's cards"><line class="sgrid" x1="${p}" x2="${w - p}" y1="${Y(0)}" y2="${Y(0)}"/>
+    <path class="sk" d="${pth(S.k)}"/><path class="sc" d="${pth(S.c)}"/><path class="sp" d="${pth(S.p)}"/></svg>`;
+}
+function setSealed(S) {
+  const KO = { booster_box: 0, etb: 1, booster_bundle: 2 }, ko = k => KO[k] ?? 9;
+  const L = (S.sealed || []).filter(s => (s.months || []).length >= 2).sort((a, b) => ko(a.kind) - ko(b.kind) || (a.kind || "").localeCompare(b.kind || "") || a.name.localeCompare(b.name));
+  if (!L.length) { $("sSealed").innerHTML = `<div class="box"><p class="why m">No sealed products tracked for this set.</p></div>`; return; }
+  const main = L.filter(s => ko(s.kind) < 9), rest = L.filter(s => ko(s.kind) === 9), first = main.length ? main : rest.slice(0, 3), more = main.length ? rest : rest.slice(3);
+  const one = s => { const i = Math.min(6, s.months.length - 1), SL = sealedLines(s), d = SL.p[i] != null && SL.k[i] != null ? SL.p[i] - SL.k[i] : null;
+    const fact = d != null ? `${i} month${i === 1 ? "" : "s"} ${s.launch ? "after launch" : "into our history"}: ${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(0)} pts vs its kind` : "";
+    return `<div class="box sbx"><b>${esc(s.name)}</b><span class="sub2">${esc(KINDN[s.kind] || s.kind || "")}${s.launch ? "" : " · line since Feb 2024"}</span>${sealedSvg(s)}
+      <div class="skey"><span><i class="kp"></i>this product</span><span><i class="kk"></i>its kind</span><span><i class="ks"></i>the set's cards</span></div>${fact ? `<p class="sfact">${fact}</p>` : ""}</div>`; };
+  $("sSealed").innerHTML = first.map(one).join("") + (more.length ? `<details class="lowd"><summary>${more.length} more sealed product${more.length === 1 ? "" : "s"} (tins, blisters, collections …)</summary>${more.map(one).join("")}</details>` : "");
+}
 const TABS = {
   collection,
   movers,
   compare,
+  sets,
 };
 function route() {
   const h = decodeURIComponent((location.hash || "").replace(/^#/, ""));
   if (h.startsWith("card/")) { FP.tab = "collection"; card(h.slice(5)); }
+  else if (h.startsWith("set/")) { FP.tab = "sets"; setScreen(h.slice(4)); }
   else { FP.tab = TABS[h] ? h : "collection"; TABS[FP.tab](); }
   document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-current", b.dataset.tab === FP.tab ? "page" : "false"));
   window.scrollTo(0, 0);
