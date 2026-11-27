@@ -34,6 +34,9 @@ async function loadWeekly(ids) {
     const rows = await q(sb.from("fp_card_weekly").select("card_id,weeks,market_chf,fair_chf,sales").in("card_id", part));
     part.forEach(id => FP.weekly[id] = null);
     rows.forEach(r => FP.weekly[r.card_id] = r);
+    const miss = part.filter(id => !FP.weekly[id]);          // (lab round 2) no fair-price line → the market line alone, drawn grey
+    if (miss.length) { const ml = await q(sb.rpc("fp_market_line", { ids: miss })).catch(() => []);
+      ml.forEach(r => { if (r.weeks && r.weeks.length > 1) FP.weekly[r.card_id] = { card_id: r.card_id, weeks: r.weeks, market_chf: r.market_chf, fair_chf: null, sales: null, marketOnly: true }; }); }
   }
 }
 
@@ -149,9 +152,10 @@ function ringSvg(D, { size = 400, uid = "a", mini = false, phases = null, reprin
   return { pts, svg: `<svg class="${mini ? "fp mini" : "fp"}" viewBox="${vb} ${vb} ${vs} ${vs}" role="img" aria-label="Fingerprint of ${esc(name)}: one spiral turn per month since March 2024, ${D.nofair ? "grey throughout: low-tier cards have no fair price" : "orange where the price sat above the fair price"}">${defs}${s.join("")}</svg>` };
 }
 
+// no fair line → the grey market line (lab round 2)
 const NONE_YET = `<svg viewBox="0 0 64 64" role="img" aria-label="No history yet"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--gr-2)" stroke-width="1.5" stroke-dasharray="2 4"/><text class="none" x="32" y="35" text-anchor="middle">none yet</text></svg>`;
 let MINI_N = 0;
-function miniFor(w, name, low) { const D = normW(w, low); return D ? ringSvg(D, { size: 200, mini: true, uid: "m" + (MINI_N++), name }).svg : NONE_YET; }
+function miniFor(w, name, low) { const D = normW(w, low || !!(w && (!w.fair_chf || !w.fair_chf.some(v => v > 0)))); return D ? ringSvg(D, { size: 200, mini: true, uid: "m" + (MINI_N++), name }).svg : NONE_YET; }
 function miniSvg(r) { return miniFor(FP.weekly[r.card_id], r.name, r.segment === "low"); }
 // life-cycle phases for the ring: pf_events P32 rows → [from, to, new | print | oop]
 const ringPhases = phases => (phases || []).map(p => [Date.parse(p.day + "T00:00:00Z"), p.day_end ? Date.parse(p.day_end + "T00:00:00Z") : Infinity, /new/i.test(p.label) ? "new" : /out/i.test(p.label) ? "oop" : "print"]);
@@ -199,7 +203,7 @@ async function collection() {
     <div class="list">${rows.map(r => `<button class="crow" data-id="${esc(r.card_id)}">
       <span class="mini">${miniSvg(r)}</span>
       <span class="cm"><b>${esc(r.name)}${r.qty > 1 ? ` <span style="color:var(--muted);font-weight:500">×${r.qty}</span>` : ""}</b>
-        <span>${esc(r.set_name || r.set_id)} · ${LOOK[r.look] || esc(r.look)} · ${esc(r.num)}</span>${rowValue(r)}</span>
+        <span>${esc(r.set_name || r.set_id)} · ${esc(RARW[r.look] || LOOK[r.look] || r.look)} · ${esc(r.num)}${r.official_count && /^\d+$/.test(r.num) ? "/" + r.official_count : ""}</span>${rowValue(r)}</span>
       <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`).join("")}</div>
     <p class="foot">Small fingerprints breathe at each card's own trading pace, half as deep as on the card.</p>
     <p class="foot">${FP.csort === "market" ? `<button class="lnk" data-cs="added">Order: as added</button>` : `<button class="lnk" data-cs="market">Sort by market price</button>`} · TCGplayer market price · fair price from HoloTrack's model (weekly refit).</p>`;
@@ -266,8 +270,8 @@ function headerBox(h) {
     const ok = h.context_median_chf && h.context_n >= 5;
     return `<div class="box"><div class="hd"><div class="mk"><small>Market</small><b>${chf(h.market_chf)}</b></div>
       ${ok ? `<div class="fr"><small>Similar cards in this set</small><b>${chf(h.context_median_chf)}</b></div>` : ""}</div>
-      ${ok ? `<p class="ctx">median of ${h.context_n} ${esc(h.context_label || "similar cards")}, this card left out</p>` : ""}
-      <div class="facts">${h.sales_4w != null ? `<span><b>${h.sales_4w}</b> sales in 4 weeks</span>` : ""}</div></div>`;
+      <p class="ctx">${ok ? `median of ${h.context_n} ${esc(h.context_label || "similar cards")}, this card left out. ` : ""}Context, not a fair price: low-tier cards have none yet.</p>
+      <div class="facts">${h.sales_4w != null ? `<span><b>${h.sales_4w}</b> sales in 4 weeks</span>` : ""}${h.character ? `<a class="setl" href="#char/${encodeURIComponent(h.character)}">${h.character_cards ? `<b>${h.character_cards}</b> ` : ""}${esc(h.character)} cards</a>` : ""}</div></div>`;
   }
   const g = gap(h.l);
   return `<div class="box"><div class="hd"><div class="mk"><small>Market</small><b>${chf(h.market_chf)}</b></div>
@@ -366,8 +370,8 @@ function pyRandom(seed) {
 /* the card's parameters with the statuses flow3.py draws: counted · beh · event · obs · none · copy */
 function flowParams(C, T) {
   const h = C.h, low = h.segment === "low", parts = Object.fromEntries(C.parts.map(p => [p.n, p])), bes = Object.fromEntries(C.beside.map(b => [b.n, b]));
-  const evc = {}; (C.events || []).forEach(e => { const n = +String(e.n || "").replace(/^P/, ""); if (n) evc[n] = (evc[n] || 0) + 1; });
-  const evKnown = (C.events || []).length > 0;
+  const evc = {}; (C.events || []).forEach(e => { const n = +String(e.n || "").replace(/^P/, ""), ms = Date.parse(e.day + "T00:00:00Z");   // (lab round 2) only events with a mark on the spiral
+    if (n && ms >= R3.START && ms <= Date.now()) evc[n] = (evc[n] || 0) + 1; });
   const w = FP.weekly[h.card_id], mk = w && w.market_chf ? w.market_chf.map(Number) : null, sales = w && w.sales ? w.sales.map(v => v == null ? -1 : +v) : null;
   const behV = n => {                                     // threecards.py build(): the last value of each behaviour series
     if (!mk || mk.length < 5) return .5; const t = mk.length - 1;
@@ -388,7 +392,7 @@ function flowParams(C, T) {
     else if (p && !low && !p.no_effect && Math.abs(p.contribution) > 1e-9) st = "counted";
     else if (s.startsWith("counted") || s === "baseline" || s === "observed") st = "obs";   // tested, not counted here
     else if (s === "behaviour") st = besideText(t.n, bes[t.n], h) ? "beh" : "obs";          // no reading yet → collecting
-    else if (s === "event") st = !evKnown || evc[t.n] ? "event" : "none";
+    else if (s === "event") st = evc[t.n] ? "event" : "none";
     else if (s === "copy") st = "copy";
     else st = "none";
     return { n: t.n, f, name: t.name, st, coef: st === "counted" ? p.contribution : 0, v: st === "beh" ? behV(t.n) : 0, ev: evc[t.n] || 1 };
@@ -632,7 +636,7 @@ function histPane(C) {                                   // (27 Nov) the prototy
   if (!D) return `<div class="box"><div class="empty" style="padding:20px 8px"><b>No history yet</b><p>HoloTrack has not exported ${esc(h.name)}'s weekly line. Today's figures are real; the spiral appears once the weekly file arrives.</p></div></div>`;
   const E = (C.events || []).map(e => ({ ...e, ms: Date.parse(e.day + "T00:00:00Z") }));
   const isRe = e => e.n === "P58";                         // reprint waves of the set: bars across the line, as the prototype's Charizard
-  const evs = E.filter(e => !isRe(e) && e.ms >= R3.START), ph = ringPhases(C.phases), rel = (ph.find(p => p[2] === "new") || [])[0];
+  const evs = E.filter(e => !isRe(e) && e.ms >= R3.START), ph = ringPhases(C.phases), rel = (ph.find(p => p[2] === "new") || [])[0] ?? (h.release_date ? Date.parse(h.release_date + "T00:00:00Z") : null);   // (lab round 2) set release date
   const R = ringSvg(D, { size: 400, uid: "r" + h.card_id.replace(/\W/g, ""), phases: ph, evs, reprints: E.filter(isRe).map(e => e.ms),
     rel: rel ?? null, preEvs: E.filter(e => !isRe(e) && e.ms < R3.START).map(e => e.ms), name: h.name });
   C._hist = { D, pts: R.pts, evs, low };
@@ -650,8 +654,8 @@ function histWeek(i) {
   $("scrub").value = i;
   $("ro-d").textContent = "Week of " + new Date(D.t[i]).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   $("ro-m").textContent = chf(m);
-  const r = f ? m / f : null;                              // the prototype's readout: always "×1.1 fair" (lab / Alex 27 Nov)
-  $("ro-g").innerHTML = r ? `<span style="color:${r > 1 ? "var(--fp-up)" : "var(--muted)"}">${xm(r)} fair</span>` : "";
+  const g = f ? gap(Math.log(m / f)) : null;              // the app's number rule (lab round 2, 27 Nov): ×1.5 and over as ×, under as a signed %
+  $("ro-g").innerHTML = g ? `<span style="color:${g.cls === "up" ? "var(--fp-up)" : "var(--muted)"}">${g.txt} fair</span>` : "";
   $("ro-s").textContent = low ? `low tier · no fair price${s != null ? ` · ${s} sales that week` : ""}`
     : (f ? `fair ${chf(f)}` : "no fair price yet (before the first refit)") + " · " + (s != null ? `${s} sale${s === 1 ? "" : "s"} that week` : "sales not counted yet");
 }
@@ -680,6 +684,8 @@ async function card(id) {
   try { [C, T] = await Promise.all([loadCard(id), texts()]); } catch (e) { C = null; }
   if (!C) { $("view").innerHTML += `<p class="sub">This card has no figures in the model yet.</p>`; return; }
   await loadHist(C).catch(() => {});                       // (27 Nov) the flow needs the weekly line and the card's events (as flow3.py)
+  if (C.h.sales_4w == null) { const w = FP.weekly[C.h.card_id], sl = w && w.sales ? w.sales.filter(v => v != null).slice(-4) : [];   // (lab round 2) Weezing: sales from the weekly line
+    if (sl.length) C.h.sales_4w = sl.reduce((a, b) => a + b, 0); }
   FP.card = C; const h = C.h;
   $("view").innerHTML = `<div class="top"><button id="back" class="bk"><svg viewBox="0 0 11 19" aria-hidden="true"><path d="M9.5 1.5 2 9.5l7.5 8"/></svg>Back</button><span class="private">PRIVATE</span></div>
     <h1 class="cardt">${esc(h.name)}</h1><p class="sub csub"><a class="setl" href="#set/${encodeURIComponent(h.set_id)}">${esc(h.set_name || h.set_id)}</a> · ${esc(RARW[h.look] || LOOK[h.look] || h.look)} · ${esc(h.num)}${h.official_count && /^\d+$/.test(h.num) ? "/" + h.official_count : ""}</p>${C.nick ? `<p class="nick">Known to collectors as <b>${esc(C.nick.nickname)}</b></p>` : ""}
@@ -780,7 +786,7 @@ async function movers() {
   const W = MW[M.win];
   let rows;
   try {
-    if (PREVIEW) rows = ((await fetch("preview.json").then(r => r.json())).movers || []).filter(r => r[W.chg] != null && (r[W.sold] || 0) >= W.floor && (M.dir === "up" ? r[W.chg] > 0 : r[W.chg] < 0)).sort((a, b) => M.dir === "up" ? b[W.chg] - a[W.chg] : a[W.chg] - b[W.chg]);
+    if (PREVIEW) rows = ((await fetch("preview.json").then(r => r.json())).movers || []).filter(r => r[W.chg] != null && (M.band === "all" || (r.market_chf >= +M.band.split("-")[0] && (!M.band.split("-")[1] || r.market_chf < +M.band.split("-")[1]))) && (!M.serie || r.serie === M.serie) && (!M.set || r.set_id === M.set) && (!M.rar || r.rarity === M.rar) && (M.fresh || !r.release_date || r.release_date <= new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)) && (r[W.sold] || 0) >= W.floor && (M.dir === "up" ? r[W.chg] > 0 : r[W.chg] < 0)).sort((a, b) => M.dir === "up" ? b[W.chg] - a[W.chg] : a[W.chg] - b[W.chg]);
     else {
       let qy = sb.from("fp_movers_v").select("*").not(W.chg, "is", null).gte(W.sold, W.floor);
       qy = M.dir === "up" ? qy.gt(W.chg, 0).order(W.chg, { ascending: false }) : qy.lt(W.chg, 0).order(W.chg, { ascending: true });
