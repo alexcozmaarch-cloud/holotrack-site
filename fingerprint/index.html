@@ -51,7 +51,7 @@ h1{margin:6px 0 2px;font-size:34px;line-height:41px;font-weight:700;letter-spaci
 .gate button{width:100%;margin-top:18px;min-height:48px;border:0;border-radius:12px;background:var(--ink);color:var(--bg);font:600 17px var(--sf);cursor:pointer}
 .gate .msg{min-height:20px;margin-top:12px;font-size:14px;color:var(--muted)}
 /* tab bar */
-.tabbar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:.5px solid var(--rule);display:grid;grid-template-columns:repeat(5,1fr);
+.tabbar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:.5px solid var(--rule);display:grid;grid-template-columns:repeat(6,1fr);
   padding:6px max(8px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 6px) max(8px,env(safe-area-inset-left,0px));z-index:5}
 .tabbar button{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:50px;font-size:10px;font-weight:500;color:var(--muted)}
 .tabbar button[aria-current="page"]{color:var(--ink)}
@@ -205,6 +205,13 @@ em.mv{color:var(--ink)}
 .waves{margin:10px 0 0;padding:0 0 0 18px;font-size:13px;color:var(--muted)}
 .srank{margin:10px 0 0;font-size:13px;color:var(--muted)}
 .sh2{font-size:20px;margin:24px 4px 10px}
+/* (27 Nov) M10 This week · M11 Collection total line */
+.wkh{font:700 26px/1.2 var(--sf);margin:6px 0 8px;letter-spacing:-.01em}.wkh .up,.tlread .up,.rv .up{color:var(--fp-up)}
+.rv{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+.tlbox{margin:0 0 14px}.tlhead{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;align-items:center}.tlhead .mini{width:64px;height:64px;display:block}
+.tlread{font-size:14px;margin-top:4px}.tline{width:100%;height:auto;display:block;margin-top:10px;touch-action:none}
+.tl-mk{fill:none;stroke:var(--ink);stroke-width:2}.tl-fair{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:4 3}.tl-above{fill:var(--fp-3);opacity:.35}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chips .chip{all:unset;cursor:pointer;font:500 13px var(--mono);border:1px solid var(--rule);border-radius:999px;padding:6px 10px;color:var(--muted)}.chips .chip.on{color:var(--ink);border-color:var(--ink)}
 svg.sline,svg.sseal{width:100%;height:auto;display:block;margin-top:8px;touch-action:none}
 h2.grp{font:600 13px/1.2 var(--mono,"IBM Plex Mono",monospace);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:22px 0 4px}
 .sgrid{stroke:var(--rule);stroke-width:1}.sax{font:500 9px var(--mono);fill:var(--muted)}
@@ -269,6 +276,7 @@ p.nick{margin:2px 0 12px;font-size:15px;color:var(--ink)}p.nick b{font-weight:60
 <div id="app" hidden>
   <main class="wrap" id="view"></main>
   <nav class="tabbar" aria-label="Fingerprint">
+    <button data-tab="week"><svg viewBox="0 0 26 26"><rect x="4" y="6" width="18" height="16" rx="2"/><path d="M4 11h18M9 4v4M17 4v4"/></svg>This week</button>
     <button data-tab="collection"><svg viewBox="0 0 26 26"><rect x="4" y="5" width="7" height="16" rx="1.5"/><rect x="15" y="5" width="7" height="16" rx="1.5"/></svg>Collection</button>
     <button data-tab="movers"><svg viewBox="0 0 26 26"><path d="M4 18l6-6 4 4 8-8"/><path d="M17 8h5v5"/></svg>Movers</button>
     <button data-tab="sets"><svg viewBox="0 0 26 26"><rect x="5" y="4" width="13" height="17" rx="2"/><path d="M9 21v1.5a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5V9a1.5 1.5 0 0 0-1.5-1.5H18"/></svg>Sets</button>

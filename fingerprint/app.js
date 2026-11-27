@@ -201,7 +201,7 @@ async function collection() {
   FP.cgroup = FP.cgroup || "card";
   const grp = `<div class="segc" role="group"><button data-cg="card" aria-selected="${FP.cgroup === "card"}">By card</button><button data-cg="set" aria-selected="${FP.cgroup === "set"}">By set</button></div>`;
   if (FP.cgroup === "set") { await collectionBySet(rows, n, tot, grp); return; }
-  $("view").innerHTML = head() + `<h1>Collection</h1><p class="sub">${n.toLocaleString("en-US")} cards · market ${chf(tot)}</p>${grp}
+  $("view").innerHTML = head() + `<h1>Collection</h1><p class="sub">${n.toLocaleString("en-US")} cards · market ${chf(tot)}</p>${totalLineBox(rows)}${grp}
     <div class="list">${rows.map(r => `<button class="crow" data-id="${esc(r.card_id)}">
       <span class="mini">${miniSvg(r)}</span>
       <span class="cm"><b>${esc(r.name)}${r.qty > 1 ? ` <span style="color:var(--muted);font-weight:500">×${r.qty}</span>` : ""}</b>
@@ -215,7 +215,7 @@ async function collection() {
     if (els.length) breathers.push({ els, per: period(r.sales_4w), depth: 0.007, c: 100 });     // half depth for the minis (prototype)
     b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); };
   });
-  cgroupBind();
+  cgroupBind(); totalLineWire();
 }
 function cgroupBind() { document.querySelectorAll("[data-cg]").forEach(b => b.onclick = () => { FP.cgroup = b.dataset.cg; collection(); });
   document.querySelectorAll("[data-cs]").forEach(b => b.onclick = () => { FP.csort = b.dataset.cs; collection(); }); }
@@ -1092,7 +1092,98 @@ function setSealed(S) {
       <div class="skey"><span><i class="kp"></i>this product</span><span><i class="kk"></i>its kind</span><span><i class="ks"></i>the set's cards</span></div>${fact ? `<p class="sfact">${fact}</p>` : ""}</div>`; };
   $("sSealed").innerHTML = first.map(one).join("") + (more.length ? `<details class="lowd"><summary>${more.length} more sealed product${more.length === 1 ? "" : "s"} (tins, blisters, collections …)</summary>${more.map(one).join("")}</details>` : "");
 }
+
+/* ---------- M11 · Collection total line (27 Nov, Fingerprint inbox Decided) ----------
+   Today's holdings at each week's prices since Feb 2024 (say so), the market line over the fair line, orange fill only where the
+   market sits above fair; one mini fingerprint of the total; a scrubber readout. Cards without a weekly line are left out and counted. */
+function collTotal(rows) {
+  const by = new Map(); let left = 0, inLine = 0;
+  for (const r of rows) { const w = FP.weekly[r.card_id], q = r.qty || 1; if (!w || !w.weeks || !w.weeks.length) { left++; continue; } inLine++;
+    w.weeks.forEach((d, i) => { const m = +w.market_chf[i]; if (!(m > 0)) return; const f = w.fair_chf ? +w.fair_chf[i] : 0, o = by.get(d) || { m: 0, f: 0, mf: 0 };
+      o.m += q * m; if (f > 0) { o.f += q * f; o.mf += q * m; } by.set(d, o); }); }
+  const weeks = [...by.keys()].sort(); return { weeks, pts: weeks.map(d => by.get(d)), left, inLine };
+}
+function totalLineBox(rows) {
+  const T = collTotal(rows); if (T.weeks.length < 4) return "";
+  const w = 340, h = 150, pl = 4, pr = 4, pt = 10, pb = 18, n = T.weeks.length, M = T.pts.map(p => p.m), F = T.pts.map(p => p.f > 0 ? p.f * (p.m / p.mf) : null);   // fair scaled to all cards
+  const hi = Math.max(...M, ...F.filter(v => v)) * 1.05, lo = 0, X = i => pl + (w - pl - pr) * i / (n - 1), Y = v => pt + (h - pt - pb) * (1 - (v - lo) / (hi - lo));
+  const line = a => a.map((v, i) => v == null ? "" : `${i && a[i - 1] != null ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+  let fill = ""; for (let i = 1; i < n; i++) { const a = M[i - 1], b = M[i], fa = F[i - 1], fb = F[i]; if (fa == null || fb == null || (a <= fa && b <= fb)) continue;
+    fill += `<path class="tl-above" d="M${X(i - 1)},${Y(Math.max(a, fa))}L${X(i)},${Y(Math.max(b, fb))}L${X(i)},${Y(fb)}L${X(i - 1)},${Y(fa)}Z"/>`; }
+  const yr = T.weeks.map((d, i) => [d.slice(0, 4), i]).filter(([y], i, a) => i === 0 || y !== a[i - 1][0]);
+  FP._tl = { T, M, F, X, Y, h, pt, pb };
+  const mini = miniFor({ weeks: T.weeks, market_chf: M, fair_chf: F.map(v => v || 0), sales: [] }, "your collection");
+  const last = n - 1;
+  return `<div class="box tlbox"><div class="tlhead"><span class="mini">${mini}</span><div><span class="label">Your collection · today's cards at past prices</span>
+      <div class="tlread" id="tlread">${tlRead(last)}</div></div></div>
+    <svg class="tline" id="tline" viewBox="0 0 ${w} ${h}" role="img" aria-label="Your collection's market value and fair value by week since ${fmtDay(T.weeks[0])}">
+      ${fill}<path class="tl-fair" d="${line(F)}"/><path class="tl-mk" d="${line(M)}"/>
+      ${yr.map(([y, i]) => `<text class="sax" x="${X(i) + 2}" y="${h - 4}">${y}</text>`).join("")}
+      <line id="tlcur" class="scur" x1="0" x2="0" y1="${pt}" y2="${h - pb}" style="display:none"/><rect id="tlhit" x="0" y="0" width="${w}" height="${h}" fill="transparent"/></svg>
+    <p class="foot" style="margin:8px 0 0">Solid line: market (TCGplayer) · dashed: fair price · orange where the market sits above fair. ${T.left ? `${T.left} card${T.left === 1 ? "" : "s"} not in the line yet.` : ""}</p></div>`;
+}
+function tlRead(i) { const L = FP._tl; if (!L) return ""; const d = L.T.weeks[i], m = L.M[i], f = L.F[i];
+  return `Week of ${fmtDay(d)} · market <b>${chf(m)}</b>${f ? ` · fair ${chf(f)} · <span class="${m > f ? "up" : ""}">${m / f >= 1.5 ? xm(m / f) : pct(Math.log(m / f), 1)}</span>${m / f >= 1.5 ? " fair" : ""}` : ""}`; }   // orange only above fair; × from ×1.5
+function totalLineWire() { const s = document.getElementById("tline"), hit = document.getElementById("tlhit"), cur = document.getElementById("tlcur"); if (!s || !FP._tl) return;
+  const L = FP._tl, n = L.T.weeks.length, at = e => { const r = s.getBoundingClientRect(), x = ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) / r.width * 340;
+    let i = 0, best = 1e9; for (let k = 0; k < n; k++) { const d = Math.abs(L.X(k) - x); if (d < best) { best = d; i = k; } } return i; };
+  const mv = e => { const i = at(e); cur.setAttribute("x1", L.X(i)); cur.setAttribute("x2", L.X(i)); cur.style.display = ""; document.getElementById("tlread").innerHTML = tlRead(i); };
+  hit.addEventListener("pointermove", mv); hit.addEventListener("pointerdown", mv); hit.addEventListener("touchmove", e => { mv(e); }, { passive: true });
+  hit.addEventListener("pointerleave", () => { cur.style.display = "none"; document.getElementById("tlread").innerHTML = tlRead(n - 1); }); }
+
+/* ---------- M10 · This week (27 Nov, Fingerprint inbox Decided) ----------
+   Built after each Monday refit (fp_week). 1 headline · 2 what moved · 3 zone changes · 4 what the model changed · 5 coming up · archive. */
+const ZONE_PUB = { "Strong Pickup": "Low zone", "Pickup": "Value", "Fair Value": "In range", "Hold": "Priced up", "Sell Zone": "Top of range" };   // HoloTrack's public names (no buy / sell words) until the tier-name answer
+const SWITCHES = [["2026-11-30", "Set premium switches on"], ["2026-12-07", "Species prior + trainer full art switch on"], ["2026-12-14", "Look v2 (rainbow + gold) switches on"]];
+const SWNAME = k => ({ set_premium: "Set premium", sd: "Set premium", species_prior: "Species prior", trainer_full_art: "Trainer full art", look_v2: "Look v2" }[k] || k.replace(/_/g, " "));
+async function loadWeek(week) {
+  if (PREVIEW) { const rows = FP.rows || await loadCollection(); await loadWeekly(rows.map(r => r.card_id)).catch(() => {});
+    return { weeks: ["2026-11-23"], week: "2026-11-23", rows: rows.map(r => { const w = FP.weekly[r.card_id], n = w && w.weeks ? w.weeks.length : 0;
+      return { week: "2026-11-23", card_id: r.card_id, qty: r.qty || 1, name: r.name, num: r.num, set_name: r.set_name, mk_before: n > 1 ? +w.market_chf[n - 2] : null, mk_after: n ? +w.market_chf[n - 1] : null,
+        fair_before: n > 1 && w.fair_chf ? +w.fair_chf[n - 2] || null : null, fair_after: n && w.fair_chf ? +w.fair_chf[n - 1] || null : null, zone_before: null, zone_after: null, held: r.held, sw_keys: null, sw_ln: null }; }) }; }
+  const W = (await q(sb.from("fp_week_digest").select("week").order("week", { ascending: false }).range(0, 4999))).map(r => r.week).filter((v, i, a) => a.indexOf(v) === i);
+  const wk = week && W.includes(week) ? week : W[0]; if (!wk) return { weeks: [], week: null, rows: [] };
+  const rows = await q(sb.from("fp_week_digest").select("*").eq("week", wk).range(0, 4999));
+  return { weeks: W, week: wk, rows };
+}
+async function thisWeek(week) {
+  $("view").innerHTML = head() + `<h1>This week</h1><p class="sub">Loading…</p>`;
+  let D; try { D = await loadWeek(week); } catch (e) { D = null; }
+  if (FP.tab !== "week") return;
+  if (!D || !D.week) { $("view").innerHTML = head() + `<h1>This week</h1><div class="box empty"><p>The first weekly page is built after the next Monday refit.</p></div>`; return; }
+  const R = D.rows, ok = r => r.mk_before > 0 && r.mk_after > 0;
+  await loadWeekly(R.map(r => r.card_id)).catch(() => {}); if (FP.tab !== "week") return;
+  const sm = (a, k) => a.reduce((s, r) => s + (r[k] || 0) * (r.qty || 1), 0), mv = R.filter(ok), fv = R.filter(r => r.fair_before > 0 && r.fair_after > 0);
+  const mk = mv.length ? Math.log(sm(mv, "mk_after") / sm(mv, "mk_before")) : null, fk = fv.length ? Math.log(sm(fv, "fair_after") / sm(fv, "fair_before")) : null;
+  const rowsBy = mv.map(r => ({ ...r, k: Math.log(r.mk_after / r.mk_before) })).sort((a, b) => b.k - a.k), up = rowsBy.filter(r => r.k > 0).slice(0, 5), dn = rowsBy.filter(r => r.k < 0).slice(-5).reverse();
+  const mvRow = r => `<button class="crow" data-id="${esc(r.card_id)}"><span class="mini">${miniFor(FP.weekly[r.card_id], r.name)}</span>
+      <span class="cm"><b>${esc(r.name)}</b><span>${esc(r.set_name || "")} · ${esc(r.num || "")}</span><span class="rv"><b>${r.k > 0 ? "▲" : "▼"} ${pct(r.k, 1)}</b> · ${chf(r.mk_before)} → ${chf(r.mk_after)}</span></span>
+      <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`;
+  const zn = z => ZONE_PUB[z] || z, zc = R.filter(r => r.zone_before && r.zone_after && r.zone_before !== r.zone_after);
+  const sw = R.filter(r => r.sw_keys && r.sw_keys.length && r.fair_before > 0 && r.fair_after > 0);
+  let model;
+  if (!sw.length) model = `<p style="margin:0">No model changes this week.</p>`;
+  else { const keys = [...new Set(sw.flatMap(r => r.sw_keys))];
+    model = keys.map(k => { const a = sw.filter(r => r.sw_keys.includes(k)), avg = a.reduce((s, r) => s + (r.sw_ln || 0), 0) / a.length;
+      return `<p style="margin:0 0 8px"><b>${esc(SWNAME(k))}</b>: ${a.length} card${a.length === 1 ? "" : "s"} · ${pct(avg, 1)} fair price on average</p>`; }).join("")
+      + `<div class="list">${sw.map(r => ({ ...r, tot: Math.log(r.fair_after / r.fair_before) })).sort((a, b) => Math.abs(b.sw_ln) - Math.abs(a.sw_ln)).slice(0, 5).map(r => `<div class="crow" style="cursor:default"><span class="mini">${miniFor(FP.weekly[r.card_id], r.name)}</span>
+        <span class="cm"><b>${esc(r.name)}</b><span>${r.held ? "Fair price under review" : `switch-on <b>${pct(r.sw_ln, 1)}</b> · normal refit ${pct(r.tot - r.sw_ln, 1)}`}</span></span><span></span></div>`).join("")}</div>`; }
+  const next = SWITCHES.filter(([d]) => d > D.week).slice(0, 3);
+  $("view").innerHTML = head() + `<h1>This week</h1><p class="sub">After the refit of ${fmtDay(D.week)} · ${R.length.toLocaleString("en-US")} cards</p>
+    <div class="box"><span class="label">Your collection this week</span><p class="wkh">${mk == null ? "–" : pct(mk, 1)} market · fair price ${fk == null ? "–" : pct(fk, 1)}</p>
+      <p class="foot" style="margin:0">Quantity-weighted over ${mv.length.toLocaleString("en-US")} cards with a price both weeks.</p></div>
+    <h2 class="sh2">What moved</h2>${up.length ? `<p class="label" style="margin:0 4px 6px">Up</p><div class="list">${up.map(mvRow).join("")}</div>` : ""}${dn.length ? `<p class="label" style="margin:14px 4px 6px">Down</p><div class="list">${dn.map(mvRow).join("")}</div>` : ""}${!up.length && !dn.length ? `<div class="box"><p style="margin:0">No price moves this week.</p></div>` : ""}
+    <h2 class="sh2">Zone changes</h2><div class="box">${zc.length ? zc.map(r => `<p style="margin:0 0 6px"><b>${esc(r.name)}</b> · ${esc(zn(r.zone_before))} → ${esc(zn(r.zone_after))}</p>`).join("") : `<p style="margin:0">${R.some(r => r.zone_before) ? "No card changed its price zone." : "Zone changes start with next week's page (this is the first one)."}</p>`}</div>
+    <h2 class="sh2">What the model changed</h2><div class="box">${model}</div>
+    <h2 class="sh2">Coming up</h2><div class="box">${next.length ? next.map(([d, t]) => `<p style="margin:0 0 6px"><span class="label">${fmtDay(d)}</span><br>${esc(t)}</p>`).join("") : `<p style="margin:0">Nothing dated yet.</p>`}</div>
+    ${D.weeks.length > 1 ? `<h2 class="sh2">Past weeks</h2><div class="chips">${D.weeks.map(w => `<button class="chip${w === D.week ? " on" : ""}" data-wk="${w}">${fmtDay(w)}</button>`).join("")}</div>` : ""}
+    <p class="foot">TCGplayer market price · fair price from HoloTrack's model (weekly refit). Dates only, no forecasts.</p>`;
+  document.querySelectorAll("#view .crow[data-id]").forEach(b => b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); });
+  document.querySelectorAll("[data-wk]").forEach(b => b.onclick = () => thisWeek(b.dataset.wk));
+}
+
 const TABS = {
+  week: () => thisWeek(),
   collection,
   movers,
   compare,
