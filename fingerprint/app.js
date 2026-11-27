@@ -621,7 +621,7 @@ async function loadHist(C) {
   const id = C.h.card_id;
   await loadWeekly([id]).catch(() => {});
   if (!C.events) {
-    if (PREVIEW) { const P = await fetch("preview.json").then(r => r.json()); C.events = P.events || []; C.phases = (P.phases || {})[C.h.set_id] || []; }
+    if (PREVIEW) { const P = await fetch("preview.json").then(r => r.json()); C.events = (P.eventsBy || {})[id] || P.events || []; C.phases = (P.phases || {})[C.h.set_id] || []; }
     else {
       const ors = [`scope.eq.all`, `and(scope.eq.set,scope_id.eq.${C.h.set_id})`, `and(scope.eq.card,scope_id.eq.${id})`];
       if (C.h.character) ors.push(`and(scope.eq.character,scope_id.eq."${C.h.character.replace(/"/g, "")}")`);
