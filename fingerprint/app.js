@@ -151,7 +151,8 @@ const COUNTED = s => /^counted/.test(s || "");
 async function loadCard(id) {
   if (PREVIEW) { const P = await fetch("preview.json").then(r => r.json()); return P.cards[id] || null; }
   const [h, parts, beside, nick] = await Promise.all([
-    q(sb.from("fp_card_header").select("*").eq("card_id", id)).then(r => r[0] || null),
+    q(sb.from("fp_card_header").select("*").eq("card_id", id)).then(r => r[0] || null)
+      .then(h => h || q(sb.from("fp_card_header_low").select("*").eq("card_id", id)).then(r => r[0] || null).catch(() => null)),   // (27 Nov) low tier outside today's fit
     q(sb.from("fp_card_parts").select("n,name,family,contribution,raw,no_effect").eq("card_id", id)),
     q(sb.from("fp_card_beside").select("n,name,value,raw,flag,detail").eq("card_id", id)),
     q(sb.from("fp_nicknames").select("nickname,source_name,source_url").eq("card_id", id)).catch(() => [])]);   // (26 Nov) curated nicknames
@@ -166,7 +167,7 @@ const pct = (k, d = 0) => { const v = (Math.exp(k) - 1) * 100; return (v >= 0 ? 
 function besideText(n, b, h) {
   if (n === 21 && b && b.detail) return `${pct(b.detail.k4)} in 4 weeks · ${pct(b.detail.k8)} in 8 · ${pct(b.detail.k26)} in 26`;   // rows keep each part on one line (.pv span)
   if (n === 22 && b && b.value != null) return `${Math.round(b.value * 100)} % below its 52-week high`;
-  if (n === 23 && b && b.value != null) return `${pct(Math.log(1 + b.value))} against its own last 12 months`;
+  if (n === 23 && b && b.value != null) return `${pct(Math.log(1 + b.value))} against its 12-month average`;
   if (n === 24 && h.l != null && h.segment !== "low") { const g = gap(h.l); return `${g.txt} ${h.l > 0 ? "above" : "below"} fair`; }
   if (n === 25 && h.market_chf) return chf(h.market_chf);
   if (n === 26 && h.sales_4w != null) { const w = h.sales_4w / 4; return w < 0.75 ? `${h.sales_4w} sales in 4 weeks` : `about ${Math.round(w)} sale${Math.round(w) === 1 ? "" : "s"} a week`; }
@@ -196,21 +197,22 @@ function headerBox(h) {
     <div class="facts">${h.sales_4w != null ? `<span><b>${h.sales_4w}</b> sales in 4 weeks</span>` : ""}${h.character && h.character_cards ? `<span><b>${h.character_cards}</b> ${esc(h.character)} cards</span>` : ""}</div>
     <p class="src">TCGplayer market price, ${esc(h.day)} · fair price: HoloTrack's model, weekly refit</p></div>`;
 }
-function plist(C, T) {
+function plist(C, T) {                                  // (27 Nov) groups follow the flow's statuses, as the prototype's list
   const h = C.h, parts = Object.fromEntries(C.parts.map(p => [p.n, p])), bes = Object.fromEntries(C.beside.map(b => [b.n, b]));
+  const FS = Object.fromEntries(flowParams(C, T).map(p => [p.n, p.st]));
   const counted = [], beside = [], events = [], notyet = [];
   for (const t of T) {
-    if (t.status === "baseline") counted.push([t, "sets the comparison", "m"]);
-    else if (COUNTED(t.status)) {
-      if (h.segment === "low") notyet.push([t, "not counted for low-tier cards", "m"]);
-      else if (parts[t.n]) { const p = parts[t.n], r = Math.exp(p.contribution); counted.push([t, p.no_effect ? "×1 · adds nothing" : xm(r), p.no_effect ? "m" : r > 1 ? "up" : "m"]); }
-      else notyet.push([t, `not counted for ${h.segment} cards`, "m"]);
-    }
-    else if (t.status === "behaviour") { const v = besideText(t.n, bes[t.n], h); beside.push([t, v || "not in the app yet", v ? "" : "m"]); }
-    else if (t.status === "event") events.push([t, "dots on the fingerprint", "m"]);
-    else notyet.push([t, t.status === "copy" ? "your copy" : t.status === "empty" ? "empty" : "observed", "m"]);
+    const st = FS[t.n], p = parts[t.n];
+    if (h.segment !== "low" && p && (COUNTED(t.status) || st === "counted")) { const r = Math.exp(p.contribution); counted.push([t, p.no_effect ? "×1 · adds nothing" : xm(r), p.no_effect ? "m" : r > 1 ? "up" : "m", p.no_effect ? -1 : Math.abs(p.contribution)]); }
+    else if (st === "beh") beside.push([t, besideText(t.n, bes[t.n], h), ""]);
+    else if (st === "event") events.push([t, "dots on the fingerprint", "m"]);
+    else if (t.status === "baseline") notyet.push([t, "sets the comparison", "m"]);
+    else if (COUNTED(t.status)) notyet.push([t, h.segment === "low" ? "not counted for low-tier cards" : `not counted for ${h.segment} cards`, "m"]);
+    else if (t.status === "behaviour") notyet.push([t, "not in the app yet", "m"]);
+    else notyet.push([t, t.status === "copy" ? "your copy" : t.status === "empty" || st === "none" ? "empty" : "observed", "m"]);
   }
-  const row = ([t, v, cls]) => `<button class="pr" data-n="${t.n}"><span>${esc(t.name)}<i>P${t.n}</i></span><span class="pv ${cls}">${String(v).split(" · ").map(x => `<span class="nw">${esc(x)}</span>`).join(" · ")}</span></button>`;
+  counted.sort((x, y) => y[3] - x[3]);
+  const row = ([t, v, cls]) => `<button class="pr" data-n="${t.n}"><span>${esc(t.name)}<i>P${t.n}</i></span><span class="pv ${cls}">${String(v).split(" · ").map(x => x.length > 24 ? esc(x) : `<span class="nw">${esc(x)}</span>`).join(" · ")}</span></button>`;
   const grp = (title, rows, fold) => rows.length ? `<div class="pg"><div class="pgh">${title} · ${rows.length}</div>${fold ? `<div class="fold" hidden>${rows.map(row).join("")}</div><button class="more">Show all ${rows.length}</button>` : rows.map(row).join("")}</div>` : "";
   FP.order = [...counted, ...beside, ...events, ...notyet].map(([t]) => t.n);
   return `<div class="box plist">${grp("Counted in the fair price", counted)}${grp("Beside the price", beside)}${grp("Events", events)}${grp("Not yet counted", notyet, true)}</div>`;
@@ -246,97 +248,239 @@ document.addEventListener("click", e => { if (e.target && e.target.id === "scrim
 (() => { let y0 = null; document.addEventListener("touchstart", e => { const s = $("sheet"); y0 = s && s.contains(e.target) && s.scrollTop <= 0 ? e.touches[0].clientY : null; }, { passive: true });
   document.addEventListener("touchend", e => { if (y0 != null && e.changedTouches[0].clientY - y0 > 80) closeSheet(); y0 = null; }, { passive: true }); })();
 function closeSheet() { $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); flowHighlight(null); }
-/* ---------- card → Today: the flow (spec §3.1) — parameters on the upper arc, the sieve on the diameter, the result below ---------- */
-const FAM = ["context", "identity", "state", "lyrical", "copy"];          // left → right; Identity and State drawn large
-const FAMW = { identity: .5, state: .22, context: .1, lyrical: .09, copy: .09 };
-const FAMN = { identity: "Identity", state: "State", context: "Context", lyrical: "Lyrical", copy: "Copy" };
-const STR = [];                                                              // counted strings that sway (middles only)
-// one multiplier everywhere (lab 24 Nov): fair ÷ typical base from fp_card_header, rounded once by xm()
+// one multiplier everywhere (lab 24 Nov): fair ÷ typical base from fp_card_header
 const prodOf = (h, sum) => h.fair_chf && h.typical_base_chf ? h.fair_chf / h.typical_base_chf : Math.exp(sum || 0);
-function flowSvg(C, T) {
-  const h = C.h, low = h.segment === "low", cx = 190, sy = 228, R = 172, Rr = 150;
-  const parts = Object.fromEntries(C.parts.map(p => [p.n, p]));
-  const byF = Object.fromEntries(FAM.map(f => [f, T.filter(t => (t.family || "").toLowerCase() === f).sort((a, b) => a.n - b.n)]));
-  const gap = 0.035, span = Math.PI - gap * (FAM.length + 1);
-  let a = Math.PI + gap, out = "", hits = "", fam = "", ids = [];
-  const P = (ang, r) => [cx + r * Math.cos(ang), sy + r * Math.sin(ang)];
-  const strings = [];
-  const counted = C.parts.filter(p => !low && !p.no_effect).sort((x, y) => Math.abs(y.contribution) - Math.abs(x.contribution));
-  const totStr = counted.reduce((s, p) => s + Math.max(1, Math.round(Math.abs(p.contribution) / 0.02)), 0);
-  let k = 0;                                                                 // running string index → its x on the sieve
-  for (const f of FAM) {
-    const list = byF[f]; if (!list.length) continue;
-    const fs = span * FAMW[f], a0 = a;
-    const nS = t => { const p = parts[t.n]; return p && !low && !p.no_effect ? Math.max(1, Math.round(Math.abs(p.contribution) / 0.02)) : 0; };
-    const wts = list.map(t => 1 + nS(t) * 0.35), wsum = wts.reduce((x, y) => x + y, 0);   // counted parameters get room for their strings
-    const st = []; let acc = 0; for (const x of wts) { st.push(a0 + fs * acc / wsum); acc += x; }
-    const sw = i => fs * wts[i] / wsum;
-    const [x0, y0] = P(a0, R + 1), [x1, y1] = P(a0 + fs, R + 1);
-    fam += `<path d="M${x0.toFixed(1)},${y0.toFixed(1)} A${R + 1},${R + 1} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)}" style="fill:none;stroke:var(--ink);stroke-width:${f === "identity" || f === "state" ? 3 : 2}px"/>`;
-    const [lx0, ly0] = P(a0, R + 12), [lx1, ly1] = P(a0 + fs, R + 12);
-    fam += `<path id="fl-${f}" d="M${lx0.toFixed(1)},${ly0.toFixed(1)} A${R + 12},${R + 12} 0 0 1 ${lx1.toFixed(1)},${ly1.toFixed(1)}" fill="none"/>
-      <text class="fam ${f === "identity" || f === "state" ? "" : "sm"}"><textPath href="#fl-${f}" startOffset="50%" text-anchor="middle">${FAMN[f].toUpperCase()}</textPath></text>`;
-    list.forEach((t, i) => {
-      const am = st[i] + sw(i) / 2, p = parts[t.n], isC = p && !low && !p.no_effect;
-      const [hx0, hy0] = P(st[i], R + 22), [hx1, hy1] = P(st[i] + sw(i), R + 22);
-      hits += `<path class="hit" data-n="${t.n}" d="M${cx},${sy} L${hx0.toFixed(1)},${hy0.toFixed(1)} A${R + 22},${R + 22} 0 0 1 ${hx1.toFixed(1)},${hy1.toFixed(1)} Z"><title>${esc(t.name)}</title></path>`;
-      if (!isC) {                                                            // grey hairline to the sieve
-        const [px, py] = P(am, R), hx = cx + (px - cx) * .82;
-        out += `<path data-p="${t.n}" class="hair" d="M${px.toFixed(1)},${py.toFixed(1)} C${px.toFixed(1)},${(py + (sy - py) * .6).toFixed(1)} ${hx.toFixed(1)},${(sy - 14).toFixed(1)} ${hx.toFixed(1)},${sy}"/>`;
-        return;
-      }
-      const n = Math.max(1, Math.round(Math.abs(p.contribution) / 0.02)), up = p.contribution > 0;
-      for (let j = 0; j < n; j++) {
-        const aj = st[i] + sw(i) * (0.08 + 0.84 * (n === 1 ? .5 : j / (n - 1)));
-        const [px, py] = P(aj, R), kk = counted.indexOf(p);
-        strings.push({ n: t.n, px, py, up, j, kk });
-      }
-    });
-    a += fs + gap;
-  }
-  // strings: order on the sieve follows the arc; landing on the lower result arc
-  strings.sort((s1, s2) => s1.px - s2.px);
-  const w = 250, sx0 = cx - w / 2;
-  strings.forEach((s, i) => {
-    const hx = sx0 + w * (strings.length === 1 ? .5 : i / (strings.length - 1));
-    const la = Math.PI * (0.18 + 0.64 * (strings.length === 1 ? .5 : i / (strings.length - 1)));
-    const lx = cx - Rr * Math.cos(la) * .72, ly = sy + 40 + Rr * Math.sin(la) * .95;
-    s.hx = hx; s.lx = lx; s.ly = ly;
-    const col = s.up ? "var(--fp-3)" : "var(--fp-2)", op = s.up ? .95 : .6;
-    out += `<path data-p="${s.n}" class="str" style="stroke:${col}" opacity="${op}" d="${strD(s, 0)}"/>`;
-    if (!low) out += `<path data-p="${s.n}" class="str2" style="stroke:${col}" opacity="${op * .8}" d="M${hx.toFixed(1)},${sy} C${hx.toFixed(1)},${sy + 50} ${lx.toFixed(1)},${(ly - 50).toFixed(1)} ${lx.toFixed(1)},${ly.toFixed(1)}"/>`;
+/* ---------- card → Today: the flow, ported 1:1 from the lab's fingerprint/reference/drawing/fx/v3/flow3.py (27 Nov) ----------
+   Read top → bottom: the parameters on the upper arc in family groups (black arcs with counts), counted parameters as strings
+   (one per 0.02 of log price), the sieve on the diameter (counted bar on its left, dashed "stops here"), the result on the black
+   lower arc, behaviour and events as hairlines on the dotted "beside · events" arc. Same geometry, constants and labels as
+   flow3.py with FP_REFINE=1 (the look Alex approved 18 Nov). Inputs are the app's own data: fp_param_text (families and status),
+   fp_card_parts (counted contributions), fp_card_beside (readings), the weekly line and the card's events. */
+const FL = { W: 380, H: 470, cx: 190, cy: 232, R: 170, LS: 1.22, STEP: 0.02, MONO: "ui-monospace,'SF Mono',Menlo,monospace",
+  SF: "-apple-system,'SF Pro Text',Inter,sans-serif" };
+const FAMF = { Identity: "I", State: "S", Context: "X", Lyrical: "L", Copy: "C" };
+const FN = { I: "Identity", S: "State", X: "Context", L: "Lyrical", C: "Copy" };
+const SHORT = { 1: "Character", 2: "Rarity tier", 3: "Scarcity", 4: "Set era", 9: "Artist", 10: "Card look", 20: "Set age", 32: "Out of print", 21: "Momentum",
+  22: "Drawdown", 23: "Vs own avg", 25: "Price level", 26: "Liquidity", 33: "Talk", 37: "Anime, games", 38: "Competitive", 41: "Platform rules", 58: "Restocks",
+  66: "Media phase", 69: "Game events", 71: "Print policy", 72: "Grading costs", 73: "Counterfeits", 74: "Celebrity", 65: "Time since release", 35: "Segment regime", 34: "Market tide" };
+/* Python helpers, so numbers print as flow3.py prints them */
+const pyRound = x => { const f = Math.floor(x), d = x - f; return d > .5 ? f + 1 : d < .5 ? f : (f % 2 === 0 ? f : f + 1); };
+const f1 = x => x.toFixed(1);                                                     // Python {:.1f}
+const pr = x => Number.isInteger(x) ? x + ".0" : String(x);                          // Python repr of a float
+/* Python's random (MT19937, seeded as random.seed(int)) — the hairlines' opacity uses random.seed(4) in radial_ios.py */
+function pyRandom(seed) {
+  const mt = new Uint32Array(624); let mti = 625;
+  const init = s => { mt[0] = s >>> 0; for (mti = 1; mti < 624; mti++) { const p = mt[mti - 1] ^ (mt[mti - 1] >>> 30); mt[mti] = (((((p & 0xffff0000) >>> 16) * 1812433253) << 16) + (p & 0x0000ffff) * 1812433253 + mti) >>> 0; } };
+  init(19650218); let i = 1, j = 0; const key = [seed >>> 0], kl = 1;
+  for (let k = Math.max(624, kl); k; k--) { const p = mt[i - 1] ^ (mt[i - 1] >>> 30);
+    mt[i] = ((mt[i] ^ (((((p & 0xffff0000) >>> 16) * 1664525) << 16) + ((p & 0x0000ffff) * 1664525))) + key[j] + j) >>> 0; i++; j++;
+    if (i >= 624) { mt[0] = mt[623]; i = 1; } if (j >= kl) j = 0; }
+  for (let k = 623; k; k--) { const p = mt[i - 1] ^ (mt[i - 1] >>> 30);
+    mt[i] = ((mt[i] ^ (((((p & 0xffff0000) >>> 16) * 1566083941) << 16) + (p & 0x0000ffff) * 1566083941)) - i) >>> 0; i++;
+    if (i >= 624) { mt[0] = mt[623]; i = 1; } }
+  mt[0] = 0x80000000; mti = 624;
+  const g = () => { if (mti >= 624) { for (let k = 0; k < 624; k++) { const y = (mt[k] & 0x80000000) | (mt[(k + 1) % 624] & 0x7fffffff);
+        mt[k] = mt[(k + 397) % 624] ^ (y >>> 1) ^ (y & 1 ? 0x9908b0df : 0); } mti = 0; }
+    let y = mt[mti++]; y ^= y >>> 11; y ^= (y << 7) & 0x9d2c5680; y ^= (y << 15) & 0xefc60000; y ^= y >>> 18; return y >>> 0; };
+  return () => ((g() >>> 5) * 67108864 + (g() >>> 6)) / 9007199254740992;
+}
+/* the card's parameters with the statuses flow3.py draws: counted · beh · event · obs · none · copy */
+function flowParams(C, T) {
+  const h = C.h, low = h.segment === "low", parts = Object.fromEntries(C.parts.map(p => [p.n, p])), bes = Object.fromEntries(C.beside.map(b => [b.n, b]));
+  const evc = {}; (C.events || []).forEach(e => { const n = +String(e.n || "").replace(/^P/, ""); if (n) evc[n] = (evc[n] || 0) + 1; });
+  const evKnown = (C.events || []).length > 0;
+  const w = FP.weekly[h.card_id], mk = w && w.market_chf ? w.market_chf.map(Number) : null, sales = w && w.sales ? w.sales.map(v => v == null ? -1 : +v) : null;
+  const behV = n => {                                     // threecards.py build(): the last value of each behaviour series
+    if (!mk || mk.length < 5) return .5; const t = mk.length - 1;
+    const smax = sales ? Math.max(...sales) : 0, st = sales ? sales[t] : -1;
+    let v;
+    if (n === 21) v = Math.abs(Math.log(mk[t] / mk[Math.max(0, t - 4)])) * 6;
+    else if (n === 22) v = (1 - mk[t] / Math.max(...mk.slice(0, t + 1))) * 2.2;
+    else if (n === 23) { const a = mk.slice(Math.max(0, t - 26), t + 1); v = Math.abs(Math.log(mk[t] / (a.reduce((x, y) => x + y, 0) / a.length))) * 3; }
+    else if (n === 25) v = mk[t] / Math.max(...mk);
+    else if (n === 26) v = smax > 0 ? st / smax : .5;
+    else v = .25 + .6 * (smax > 0 ? st / smax : .5);
+    return Math.min(1, v);
+  };
+  return T.filter(t => FAMF[t.family]).map(t => {
+    const f = FAMF[t.family], p = parts[t.n], s = (t.status || "").toLowerCase();
+    let st;
+    if (f === "C") st = "copy";
+    else if (p && !low && !p.no_effect && Math.abs(p.contribution) > 1e-9) st = "counted";
+    else if (s.startsWith("counted") || s === "baseline" || s === "observed") st = "obs";   // tested, not counted here
+    else if (s === "behaviour") st = besideText(t.n, bes[t.n], h) ? "beh" : "obs";          // no reading yet → collecting
+    else if (s === "event") st = !evKnown || evc[t.n] ? "event" : "none";
+    else if (s === "copy") st = "copy";
+    else st = "none";
+    return { n: t.n, f, name: t.name, st, coef: st === "counted" ? p.contribution : 0, v: st === "beh" ? behV(t.n) : 0, ev: evc[t.n] || 1 };
   });
-  STR.length = 0; strings.forEach(s => STR.push(s));
-  const sieve = `<line x1="${cx - R}" y1="${sy}" x2="${cx + R}" y2="${sy}" class="sieve"/>` +
-    Array.from({ length: 35 }, (_, i) => { const x = cx - R + i * (2 * R / 34); return `<line x1="${x.toFixed(1)}" y1="${sy - 3}" x2="${x.toFixed(1)}" y2="${sy + 3}" class="tick"/>`; }).join("");
-  const sum = C.parts.reduce((s, p) => s + (p.contribution || 0), 0);
-  const [r0x, r0y] = [cx - Rr * .78, sy + 40 + Rr * .55], [r1x, r1y] = [cx + Rr * .78, sy + 40 + Rr * .55];
-  const res = low ? "NO FAIR PRICE · LOW TIER" : `RESULT ${xm(prodOf(h, sum))} → FAIR ${h.fair_chf ? Math.round(h.fair_chf).toLocaleString("en-US") : "—"}`;
-  const resArc = `<path id="fl-res" d="M${r0x.toFixed(1)},${r0y.toFixed(1)} A${Rr},${Rr * .9} 0 0 0 ${r1x.toFixed(1)},${r1y.toFixed(1)}" class="${low ? "resl" : "resa"}"/>
-    <path id="fl-rest" d="M${(r0x - 6).toFixed(1)},${(r0y + 14).toFixed(1)} A${Rr + 10},${(Rr + 10) * .9} 0 0 0 ${(r1x + 6).toFixed(1)},${(r1y + 14).toFixed(1)}" fill="none"/>
-    <text class="res ${low ? "" : "on"}"><textPath href="#fl-rest" startOffset="50%" text-anchor="middle">${res}</textPath></text>`;
-  const aria = low ? `Flow of ${h.name}: every parameter stops at the sieve; low-tier cards have no fair price.`
-    : `Flow of ${h.name}, read top to bottom: ${T.length} parameters on the upper arc, a sieve on the diameter, the result on the lower arc. ${counted.length} counted parameters pass, together ${xm(prodOf(h, sum))}.`;
-  return `<svg class="flow" viewBox="-14 -4 408 ${low ? 300 : 470}" role="img" aria-label="${esc(aria)}"><g class="fams">${fam}</g><g class="ss">${out}</g>${sieve}${low ? "" : resArc}${low ? `<text class="res" x="${cx}" y="${sy + 34}" text-anchor="middle">${res}</text>` : ""}<g class="hits">${hits}</g></svg>`;
 }
-function strD(s, d) {
-  const my = s.py + (228 - s.py) * .55;
-  return `M${s.px.toFixed(1)},${s.py.toFixed(1)} C${(s.px + d).toFixed(1)},${my.toFixed(1)} ${(s.hx + d).toFixed(1)},${(228 - 16).toFixed(1)} ${s.hx.toFixed(1)},228`;
+function flowSvg(C, T) {
+  const { W, cx, cy, R, LS, STEP, MONO } = FL, HY = cy, h = C.h, low = h.segment === "low", ID = "fl";
+  const P = flowParams(C, T), rad = d => d * Math.PI / 180;
+  const status = p => p.st, amount = p => ({ counted: Math.abs(p.coef), beh: .02 + .05 * Math.min(1, p.v || 0), event: .012 * p.ev, obs: .006, copy: .006 })[p.st] ?? .0018;
+  const NEG = p => p.st === "counted" && p.coef < 0, COL = p => NEG(p) ? "var(--muted)" : `var(--c${p.f})`, SGN = p => p.st === "counted" ? p.coef : amount(p);
+  const nm = p => SHORT[p.n] || p.name, NSTR = p => Math.max(1, pyRound(amount(p) / STEP));
+  const XM = v => { const m = Math.exp(v); return m < 1 ? m.toFixed(2) : m.toFixed(1); };
+  // family shares of the top arc: share of Σ|contribution| with a 4 % floor (fixture.py 'rule', decided 18 Nov); low tier: fixed
+  const FIXED = { I: .52, S: .3, X: .08, L: .05, C: .05 };
+  const FAMW = (() => { const cnt = P.filter(p => p.st === "counted"), tot = cnt.reduce((s, p) => s + Math.abs(p.coef), 0); if (low || !tot) return FIXED;
+    const raw = Object.fromEntries("ISXLC".split("").map(f => [f, cnt.filter(p => p.f === f).reduce((s, p) => s + Math.abs(p.coef), 0) / tot]));
+    const lo = Object.keys(raw).filter(f => raw[f] < .04), rest = 1 - .04 * lo.length, big = Object.keys(raw).filter(f => !lo.includes(f)).reduce((s, f) => s + raw[f], 0);
+    return Object.fromEntries(Object.keys(raw).map(f => [f, lo.includes(f) ? .04 : raw[f] / big * rest])); })();
+  // hairline opacity, as radial_ios.py: random.seed(4) over the parameters in family order I S X L C
+  const rnd = pyRandom(4), CONF = {};
+  for (const f of ["I", "S", "X", "L", "C"]) for (const p of P.filter(q => q.f === f))
+    CONF[p.n] = p.st === "counted" ? .95 : p.st === "beh" ? .35 + .5 * rnd() : p.st === "event" ? .3 + .3 * rnd() : 1;
+  const pt = (a, r = R) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  const rc = (qx, qy, k = .38) => [qx + (cx - qx) * k, qy + (cy - qy) * k];
+  const Tx = (x, y, t, size, cls, anchor = "start", rot = null, weight = 400, font = "sf") =>
+    `<text x="${f1(x)}" y="${f1(y)}" font-family="${font === "mono" ? MONO : FL.SF}" font-size="${size}" font-weight="${weight}" text-anchor="${anchor}" class="${cls}"${rot != null ? ` transform="rotate(${f1(rot)} ${f1(x)} ${f1(y)})"` : ""}>${esc(t)}</text>`;
+  const radial_label = (x, y, deg, text, size, cls, weight) => { const a = ((deg % 360) + 360) % 360;
+    return 90 < a && a < 270 ? Tx(x, y, text, size, cls, "end", a - 180, weight) : Tx(x, y, text, size, cls, "start", a, weight); };
+  const fit = (r, a, text, size, cls, weight = 400) => { const L = text.length * size * .62, ex = cx + (r + 8 + L) * Math.cos(a);
+    if (!(-12 <= ex && ex <= W + 12)) return ""; const [x, y] = pt(a, r + 8); return radial_label(x, y, ((a * 180 / Math.PI) % 360 + 360) % 360, text, size, cls, weight); };
+  const s = [], LBL = [];
+  const ORD = ["X", "I", "S", "L", "C"], order = ORD.flatMap(f => P.filter(p => p.f === f));
+  const cnt = order.filter(p => p.st === "counted"), BEH = order.filter(p => p.st === "beh").sort((a, b) => amount(b) - amount(a)), EVT = order.filter(p => p.st === "event");
+  const LAB = new Set([...cnt.map(p => p.n), ...BEH.slice(0, 2).map(p => p.n)]);
+  // ---------- top arc: the parameters (192° → 348°)
+  const a0 = rad(192), a1 = rad(348), fg = rad(3), usable = (a1 - a0) - fg * 4;
+  let SG = 2.7, SW = 1.3; const NTOT = cnt.reduce((t, p) => t + NSTR(p), 0);
+  if (NTOT) { SG = Math.min(SG, (.62 * usable * R - 6 * cnt.length) / NTOT); SW = Math.min(SW, SG * .6); }
+  const seg = {}, famr = {}; let a = a0;
+  for (const f of ORD) {
+    const grp = order.filter(p => p.f === f), span = usable * FAMW[f], fa = a;
+    const need = {}; grp.filter(p => p.st === "counted").forEach(p => need[p.n] = (NSTR(p) * SG + 6) / R);
+    const rest = grp.filter(p => p.st !== "counted"), left = Math.max(span - Object.values(need).reduce((x, y) => x + y, 0), rest.length * rad(.4));
+    const wsum = rest.reduce((t, p) => t + Math.sqrt(amount(p)), 0) || 1;
+    for (const p of grp) { const da = need[p.n] || left * Math.sqrt(amount(p)) / wsum; seg[p.n] = [a, a + da]; a += da; }
+    famr[f] = [fa, a]; a += fg;
+  }
+  const mid = n => (seg[n][0] + seg[n][1]) / 2;
+  // ---------- the sieve: counted bar at the left end
+  const HO = ["counted", "beh", "event", "obs", "none", "copy"];
+  const hubw = p => ({ counted: NSTR(p) * SG * .8, beh: 3.2, event: 2.6, obs: 1.1, none: .8, copy: 1.1 })[p.st];
+  const hw = Object.fromEntries(HO.map(u => [u, order.filter(p => p.st === u).reduce((t, p) => t + hubw(p), 0)])), hg = 8;
+  const sc = (2 * R - 10 - hg * 5) / Object.values(hw).reduce((x, y) => x + y, 0);
+  const hx = {}, hubpos = {}; let x = cx - R + 5;
+  for (const u of HO) { const x0 = x;
+    for (const p of order.filter(q => q.st === u).sort((p1, p2) => mid(p1.n) - mid(p2.n))) { const w = hubw(p) * sc; hx[p.n] = [x, x + w]; x += w; }
+    hubpos[u] = [x0, x]; x += hg; }
+  // strings and hairlines from the top arc down to the sieve
+  for (const p of order) {
+    const n = p.n, [x0, x1] = hx[n];
+    if (p.st === "counted") { const N = NSTR(p), am = mid(n);
+      for (let j = 0; j < N; j++) { const o = j - (N - 1) / 2, t = am + o * SG / R, [qx, qy] = pt(t, R - 2), hxj = x0 + (j + .5) * (x1 - x0) / N, c1 = rc(qx, qy);
+        s.push(`<path data-p="${n}" data-t="${t.toFixed(5)}" data-hx="${f1(hxj)}" d="M${f1(qx)},${f1(qy)} C${f1(c1[0])},${f1(c1[1])} ${f1(hxj)},${f1(HY - Math.max(16, (HY - qy) * .55))} ${f1(hxj)},${HY - 4}" style="fill:none;stroke:${COL(p)};stroke-width:${pr(SW)}px" opacity="1"/>`); } }
+    else { const [qx, qy] = pt(mid(n), R - 2), hxm = (x0 + x1) / 2, c1 = rc(qx, qy);
+      const op = ({ beh: .55, event: .45, obs: .3, none: .18, copy: .3 })[p.st] * (p.st === "beh" || p.st === "event" ? CONF[n] : 1);
+      s.push(`<path data-p="${n}" d="M${f1(qx)},${f1(qy)} C${f1(c1[0])},${f1(c1[1])} ${f1(hxm)},${f1(HY - Math.max(16, (HY - qy) * .55))} ${f1(hxm)},${HY - 3}" style="fill:none;stroke:var(--muted);stroke-width:.6px" opacity="${op.toFixed(2)}"/>`); }
+  }
+  for (const f of ORD) {
+    const [fa, fb] = famr[f], r = R + 3, [xa, ya] = pt(fa, r), [xb, yb] = pt(fb, r), cntf = P.filter(p => p.f === f).length;
+    s.push(`<path d="M${f1(xa)},${f1(ya)} A${r},${r} 0 0 1 ${f1(xb)},${f1(yb)}" style="fill:none;stroke:var(--ink);stroke-width:3px"><title>${FN[f]} · ${cntf} parameters · weight ${pyRound(FAMW[f] * 100)} %</title></path>`);
+    const rr = R - 10, [ia, ja] = pt(fa, rr), [ib, jb] = pt(fb, rr);
+    s.push(`<path id="${ID}f${f}" d="M${f1(ia)},${f1(ja)} A${rr},${rr} 0 0 1 ${f1(ib)},${f1(jb)}" fill="none"/>`);
+    const full = `${FN[f].toUpperCase()} ${cntf}`;
+    if (fb - fa > rad(16 * LS)) LBL.push(`<text font-family="${MONO}" font-size="${(8.6 * LS).toFixed(1)}" font-weight="600" letter-spacing=".6" class="t-ink halo"><textPath href="#${ID}f${f}" startOffset="50%" text-anchor="middle">${full}</textPath></text>`);
+    else { const am = (fa + fb) / 2, [lx, ly] = pt(am, R - 12), dg = ((am * 180 / Math.PI) % 360 + 360) % 360, [rot, anc] = 90 < dg && dg < 270 ? [dg - 180, "start"] : [dg, "end"];
+      LBL.push(`<text x="${f1(lx)}" y="${f1(ly)}" font-family="${MONO}" font-size="${(8.6 * LS).toFixed(1)}" font-weight="600" letter-spacing=".6" text-anchor="${anc}" dominant-baseline="central" transform="rotate(${f1(rot)} ${f1(lx)} ${f1(ly)})" class="t-ink halo">${full}</text>`); }
+  }
+  for (const p of order) { const n = p.n, am = mid(n);
+    if (LAB.has(n)) s.push(fit(R + 2, am, nm(p), 10.5 * LS, p.st === "counted" ? "t-ink b" : "t-muted", p.st === "counted" ? 600 : 400));
+    else { const [x0, y0] = pt(am, R + 7), [x1, y1] = pt(am, R + 11);
+      s.push(`<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" style="stroke:var(--muted);stroke-width:.7px;stroke-opacity:.6"/>`); } }
+  // ---------- bottom arc: the RESULT (left → right = angle decreasing)
+  const TOT = cnt.reduce((t, p) => t + amount(p), 0), t_bh = [rad(172), rad(154)], t_ev = [rad(150), rad(132)], t_ct = [rad(126), rad(48)];
+  const k = TOT ? (t_ct[0] - t_ct[1]) / TOT : 0; a = t_ct[0]; const res = [];
+  for (const p of [...cnt].sort((p1, p2) => hx[p1.n][0] - hx[p2.n][0])) {
+    const n = p.n, [x0, x1] = hx[n], ta = a, tb = a - amount(p) * k; a = tb; res.push([n, tb, ta]);
+    const [lx, ly] = pt(ta), [rx, ry] = pt(tb), cl = rc(lx, ly), cr = rc(rx, ry);
+    const d = `M${f1(x0)},${HY + 4} C${f1(x0)},${f1(HY + Math.max(16, (ly - HY) * .5))} ${f1(cl[0])},${f1(cl[1])} ${f1(lx)},${f1(ly)} ` +
+      `A${R},${R} 0 0 0 ${f1(rx)},${f1(ry)} C${f1(cr[0])},${f1(cr[1])} ${f1(x1)},${f1(HY + Math.max(16, (ry - HY) * .5))} ${f1(x1)},${HY + 4} Z`;
+    s.push(`<g data-p="${n}" opacity="1.00" filter="url(#${ID}sh)"><path d="${d}" style="fill:url(#${ID}g${NEG(p) ? "N" : p.f})"/></g>`);
+    const N = NSTR(p);
+    for (let j = 0; j < N; j++) { const hxj = x0 + (j + .5) * (x1 - x0) / N, t = ta - (j + .5) * (ta - tb) / N, [qx, qy] = pt(t, R - 1), c = rc(qx, qy);
+      s.push(`<path data-p="${n}" d="M${f1(hxj)},${HY + 4} C${f1(hxj)},${f1(HY + Math.max(16, (qy - HY) * .5))} ${f1(c[0])},${f1(c[1])} ${f1(qx)},${f1(qy)}" style="fill:none;stroke:url(#${ID}gw);stroke-width:.7px" opacity="1.00"/>`); }
+    s.push(`<path data-p="${n}" d="${d}" style="fill:none;stroke:var(--card);stroke-width:1.2px;stroke-opacity:.9" opacity="1.00"/>`);
+    const am = (ta + tb) / 2;
+    s.push(fit(R + 1, am, `×${XM(SGN(p))} ${nm(p)}`, 10.5 * LS, "t-ink b", 600) || fit(R + 1, am, `×${XM(SGN(p))}`, 10.5 * LS, "t-ink b", 600));
+  }
+  { const [xa, ya] = pt(t_ct[0], R + 3), [xb, yb] = pt(t_ct[1], R + 3);
+    s.push(`<path d="M${f1(xa)},${f1(ya)} A${R + 3},${R + 3} 0 0 0 ${f1(xb)},${f1(yb)}" style="fill:none;stroke:var(--ink);stroke-width:5px"/>`);
+    const rr = R - 14, [ia, ja] = pt(t_ct[0], rr), [ib, jb] = pt(t_ct[1], rr);
+    s.push(`<path id="${ID}res" d="M${f1(ia)},${f1(ja)} A${rr},${rr} 0 0 0 ${f1(ib)},${f1(jb)}" fill="none"/>`); }
+  const sum = cnt.reduce((t, p) => t + p.coef, 0), MULT = prodOf(h, sum);
+  const multTxt = MULT < 10 ? MULT.toFixed(2) : MULT < 100 ? MULT.toFixed(1) : MULT.toFixed(0);
+  const resTxt = low ? "NO FAIR PRICE · LOW TIER" : h.held || !h.fair_chf ? "FAIR PRICE UNDER REVIEW" : `RESULT ×${multTxt} → FAIR ${Math.round(h.fair_chf).toLocaleString("en-US")}`;
+  LBL.push(`<text font-family="${MONO}" font-size="${(9.2 * LS).toFixed(1)}" font-weight="700" letter-spacing=".6" class="t-ink halo"><textPath href="#${ID}res" startOffset="50%" text-anchor="middle">${resTxt}</textPath></text>`);
+  const beh = [], evt = [];
+  for (const [grp0, [ta, tb], name, outL] of [[BEH, t_bh, "BESIDE", beh], [EVT, t_ev, "EVENTS", evt]]) {
+    const grp = [...grp0].sort((p1, p2) => hx[p1.n][0] - hx[p2.n][0]), w = (ta - tb) / Math.max(1, grp.length);
+    grp.forEach((p, i) => { outL.push([p.n, ta - (i + 1) * w, ta - i * w]);
+      const t = ta - (i + .5) * (ta - tb) / grp.length, [qx, qy] = pt(t, R - 1), hxm = (hx[p.n][0] + hx[p.n][1]) / 2, c = rc(qx, qy);
+      s.push(`<path data-p="${p.n}" d="M${f1(hxm)},${HY + 3} C${f1(hxm)},${f1(HY + Math.max(16, (qy - HY) * .5))} ${f1(c[0])},${f1(c[1])} ${f1(qx)},${f1(qy)}" style="fill:none;stroke:var(--muted);stroke-width:.7px" opacity="0.60"/>`); });
+    const [xa, ya] = pt(ta, R + 3), [xb, yb] = pt(tb, R + 3);
+    s.push(`<path d="M${f1(xa)},${f1(ya)} A${R + 3},${R + 3} 0 0 0 ${f1(xb)},${f1(yb)}" style="fill:none;stroke:var(--muted);stroke-width:1.6px;stroke-dasharray:3 3"/>`);
+    const rr = R - 16, [ia, ja] = pt(ta, rr), [ib, jb] = pt(tb, rr), pid = ID + "t" + name.slice(0, 3);
+    s.push(`<path id="${pid}" d="M${f1(ia)},${f1(ja)} A${rr},${rr} 0 0 0 ${f1(ib)},${f1(jb)}" fill="none"/>`);
+    LBL.push(`<text font-family="${MONO}" font-size="${(8 * LS).toFixed(1)}" font-weight="600" letter-spacing=".5" class="t-muted halo"><textPath href="#${pid}" startOffset="50%" text-anchor="middle">${name}</textPath></text>`);
+  }
+  // the sieve
+  for (const u of HO) { const [x0, x1] = hubpos[u], hh = u === "counted" ? 8 : 4;
+    s.push(`<rect x="${f1(x0)}" y="${pr(HY - hh / 2)}" width="${f1(Math.max(2, x1 - x0))}" height="${hh}" rx="${pr(hh / 2)}" style="fill:var(--hub-${u})"/>`); }
+  const stop = [hubpos.obs[0], hubpos.copy[1]];
+  LBL.push(Tx((stop[0] + stop[1]) / 2, HY + 15, "STOPS HERE", 7.6 * LS, "t-muted halo", "middle", null, 600, "mono"));
+  LBL.push(Tx((stop[0] + stop[1]) / 2, HY + 26, "collecting · no data · copy", 7.6 * LS, "t-muted halo", "middle", null, 400, "sf"));
+  const bot = cy + R, grad = f => `<linearGradient id="${ID}g${f}" gradientUnits="userSpaceOnUse" x1="0" y1="${HY}" x2="0" y2="${bot}">` +
+    `<stop offset="0" style="stop-color:var(--c${f});stop-opacity:.18"/><stop offset=".35" style="stop-color:var(--c${f});stop-opacity:.62"/>` +
+    `<stop offset=".8" style="stop-color:var(--c${f});stop-opacity:.95"/><stop offset="1" style="stop-color:var(--c${f});stop-opacity:1"/></linearGradient>`;
+  const DEFS = "<defs>" + ["I", "S", "X", "L", "C"].map(grad).join("") +     // flow3.py defines I and S only; X/L/C added so P79 (Context) has a fill once counted
+    `<linearGradient id="${ID}gN" gradientUnits="userSpaceOnUse" x1="0" y1="${HY}" x2="0" y2="${bot}"><stop offset="0" style="stop-color:var(--muted);stop-opacity:.15"/><stop offset="1" style="stop-color:var(--muted);stop-opacity:.7"/></linearGradient>` +
+    `<linearGradient id="${ID}gw" gradientUnits="userSpaceOnUse" x1="0" y1="${HY}" x2="0" y2="${bot}"><stop offset="0" style="stop-color:var(--c-str);stop-opacity:0"/><stop offset=".15" style="stop-color:var(--c-str);stop-opacity:.75"/><stop offset=".75" style="stop-color:var(--c-str);stop-opacity:.15"/><stop offset="1" style="stop-color:var(--c-str);stop-opacity:0"/></linearGradient>` +
+    `<filter id="${ID}sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="4" style="flood-color:var(--c-shadow)" flood-opacity="1"/></filter></defs>`;
+  const NW = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"][cnt.length] || String(cnt.length);
+  const aria = `Flow of ${h.name}, read top to bottom: ${P.length} parameters on the upper arc, a sieve on the diameter, the result on the lower arc. ${NW} counted parameters pass: ${cnt.map(p => `${p.name} ${p.coef >= 0 ? "+" : "−"}${Math.abs(p.coef).toFixed(2)}`).join(", ")}${cnt.length ? `, together ${sum >= 0 ? "+" : "−"}${Math.abs(sum).toFixed(2)}` : ""}.`;
+  C._fl = { cx, cy, R, HY, seg, res, beh, evt, order: Object.keys(seg).map(Number).sort((p1, p2) => seg[p1][0] - seg[p2][0]) };
+  return `<svg class="flow" viewBox="-14 -4 ${W + 28} ${cy + R + 104}" role="img" aria-label="${esc(aria)}">${DEFS}${s.join("")}${LBL.join("")}<g id="flhl" pointer-events="none"></g></svg>`;
 }
-function swayFrame(ms) {                                                     // string ends fixed, middles sway ±3 pt at the card's pace
-  if (!REDUCE.matches && FP.card && document.querySelector("svg.flow")) {
-    const per = period(FP.card.h.sales_4w), els = document.querySelectorAll("svg.flow path.str");
-    els.forEach((el, i) => { const s = STR[i]; if (!s) return; const d = 3 * Math.sin(2 * Math.PI * (ms / 1000) / per + i * .07); el.setAttribute("d", strD(s, d)); });
+/* tap → parameter (prototype hit()): above the diameter by angle on the top arc, below by the result / beside / events arcs */
+function flowHit(svg, e) {
+  const g = FP.card && FP.card._fl; if (!g) return null;
+  const p0 = svg.createSVGPoint(); p0.x = e.clientX; p0.y = e.clientY; const p = p0.matrixTransform(svg.getScreenCTM().inverse());
+  let a = Math.atan2(p.y - g.cy, p.x - g.cx); if (a < 0) a += 2 * Math.PI;
+  const near = list => { let best = null, bd = 1e9; for (const [n, lo, hi] of list) { if (a >= lo && a <= hi) return n; const d = Math.min(Math.abs(a - lo), Math.abs(a - hi)); if (d < bd) { bd = d; best = n; } } return bd < .06 ? best : null; };
+  if (p.y < g.HY) return near(g.order.map(n => [n, g.seg[n][0], g.seg[n][1]]));
+  return near([...g.res, ...g.beh, ...g.evt]);
+}
+function flowArc(g, lo, hi, r) { const P = a => [g.cx + r * Math.cos(a), g.cy + r * Math.sin(a)], [x0, y0] = P(lo), [x1, y1] = P(hi); return `M${x0.toFixed(1)},${y0.toFixed(1)} A${r},${r} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)}`; }
+function flowHighlight(n) {                                  // prototype highlight(): other strings fade to .12, ink arcs mark the parameter
+  const svg = document.querySelector("svg.flow"), g = FP.card && FP.card._fl, hl = document.getElementById("flhl"); if (!svg || !g || !hl) return;
+  hl.innerHTML = "";
+  svg.querySelectorAll("path[data-t]").forEach(el => el.setAttribute("opacity", n == null || +el.dataset.p === n ? 1 : .12));
+  if (n == null || !g.seg[n]) return;
+  const [lo, hi] = g.seg[n], w = Math.max(hi - lo, .035), m = (lo + hi) / 2;
+  const add = d => { const e = document.createElementNS("http://www.w3.org/2000/svg", "path"); e.setAttribute("d", d); e.setAttribute("style", "fill:none;stroke:var(--ink);stroke-width:7px"); hl.appendChild(e); };
+  add(flowArc(g, m - w / 2, m + w / 2, g.R + 7)); const b = [...g.res, ...g.beh, ...g.evt].find(x => x[0] === n); if (b) add(flowArc(g, b[1], b[2], g.R + 7));
+}
+/* breathing (prototype frame()): each counted string sways ±3 at the card's trading pace; ends stay put */
+let FLS = [];
+function flowWire(svg) {
+  FLS = [...svg.querySelectorAll("path[data-t]")].map((el, i) => ({ el, t: +el.dataset.t, hx: +el.dataset.hx, ph: (i * 2.399) % 6.283, jit: .85 + ((i * 7919) % 100) / 330 }));
+  svg.addEventListener("click", e => { const n = flowHit(svg, e); if (n) sheet(n); });
+}
+function swayFrame(ms) {
+  const g = FP.card && FP.card._fl;
+  if (!REDUCE.matches && g && FLS.length && FLS[0].el.isConnected) {
+    const T = ms / 1000, w = 2 * Math.PI / period(FP.card.h.sales_4w);
+    for (const p of FLS) { const d = Math.sin(T * w * p.jit + p.ph), r = g.R - 2, qx = g.cx + r * Math.cos(p.t), qy = g.cy + r * Math.sin(p.t);
+      const dx = d * 3, c1x = qx + (g.cx - qx) * .38 + dx, c1y = qy + (g.cy - qy) * .38, c2x = p.hx + dx * .8, c2y = g.HY - Math.max(16, (g.HY - qy) * .55);
+      p.el.setAttribute("d", `M${qx.toFixed(1)},${qy.toFixed(1)} C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p.hx},${g.HY - 4}`); }
   }
   requestAnimationFrame(swayFrame);
 }
 requestAnimationFrame(swayFrame);
-function flowHighlight(n) {
-  const svg = document.querySelector("svg.flow"); if (!svg) return;
-  svg.classList.toggle("dim", n != null);
-  svg.querySelectorAll("[data-p]").forEach(e => e.classList.toggle("hl", +e.dataset.p === n));
-  svg.querySelectorAll(".hit").forEach(e => e.classList.toggle("hl", +e.dataset.n === n));
-}
 /* ---------- card → Why (spec §3.2): one sentence and a step chart on one log scale ---------- */
 const NAMEL = { 1: "character", 3: "scarcity", 7: "kind", 9: "artist", 10: "card look", 79: "set premium" };
 function whyPane(C) {
@@ -449,6 +593,7 @@ async function card(id) {
   let C, T;
   try { [C, T] = await Promise.all([loadCard(id), texts()]); } catch (e) { C = null; }
   if (!C) { $("view").innerHTML += `<p class="sub">This card has no figures in the model yet.</p>`; return; }
+  await loadHist(C).catch(() => {});                       // (27 Nov) the flow needs the weekly line and the card's events (as flow3.py)
   FP.card = C; const h = C.h;
   $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
     <h1 class="cardt">${esc(h.name)}</h1>${C.nick ? `<p class="nick">Known to collectors as ${esc(C.nick.nickname)}</p>` : ""}<p class="sub">${h.character ? `<a class="setl" href="#char/${encodeURIComponent(h.character)}">${esc(h.character)}</a> · ` : ""}<a class="setl" href="#set/${encodeURIComponent(h.set_id)}">${esc(h.set_name || h.set_id)}</a> · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
@@ -465,7 +610,8 @@ async function card(id) {
   });
   if (FP.openTab) { const b = document.querySelector(`.segc [data-p="${FP.openTab}"]`); FP.openTab = null; if (b) b.click(); }
   $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "collection"); };
-  document.querySelectorAll(".pr, .hit").forEach(b => b.onclick = () => sheet(+b.dataset.n));
+  document.querySelectorAll(".pr").forEach(b => b.onclick = () => sheet(+b.dataset.n));
+  { const fsvg = document.querySelector("svg.flow"); if (fsvg) flowWire(fsvg); }
   document.querySelectorAll(".more").forEach(b => b.onclick = () => { b.previousElementSibling.hidden = false; b.remove(); });
 }
 /* ---------- Compare (spec §5) ---------- */
