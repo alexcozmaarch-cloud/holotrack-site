@@ -38,7 +38,6 @@ async function loadWeekly(ids) {
 }
 
 /* ---------- the fingerprint (spiral): one turn per month since March 2024 ---------- */
-const T0 = Date.parse("2024-03-01T00:00:00Z"), MONTH = 30.44 * 864e5;
 // life-cycle phase of the card's set on a day (pf_events P32: new print / in print / out of print) → shade step 1 / 2 / 3
 function phaseAt(phases, ms) {
   let best = null;
@@ -46,49 +45,127 @@ function phaseAt(phases, ms) {
     if (ms >= a && ms < b && (!best || a >= best.a)) best = { a, k: /new/i.test(p.label) ? 1 : /out/i.test(p.label) ? 3 : 2 }; }
   return best ? best.k : null;
 }
-function spiral(w, { size = 200, r0 = 14, r1 = 94, mini = false, phases = null } = {}) {
-  const c = size / 2, n = w.weeks.length;
-  if (!n) return "";
-  const t = w.weeks.map(d => Date.parse(d + "T00:00:00Z"));
-  const tEnd = t[n - 1], span = Math.max(1, tEnd - Math.min(t[0], T0));
-  const P = (ms, off = 0) => { const a = 2 * Math.PI * (ms - T0) / MONTH - Math.PI / 2, f = Math.max(0, (ms - Math.min(t[0], T0)) / span), r = r0 + (r1 - r0) * f + off;
-    return [c + r * Math.cos(a), c + r * Math.sin(a)]; };
-  const lastTurn = tEnd - MONTH;
-  let old = "", nw = "";
-  for (let i = 1; i < n; i++) {
-    const m = w.market_chf[i], f = w.fair_chf ? w.fair_chf[i] : null, l = (m && f) ? Math.log(m / f) : null;
-    const ph = phases ? phaseAt(phases, t[i]) : null;                      // History only: shade by the set's print phase
-    const col = l == null ? "var(--gr-1)" : l > 0 ? (ph ? `var(--fp-${ph})` : "var(--fp-3)") : (ph ? `var(--gr-${ph})` : "var(--gr-2)");
-    const sw = (l == null ? 1.1 : 1.2 + Math.min(Math.abs(l), 2) * 1.3) * (mini ? 0.75 : 0.45);
-    const s = w.sales ? w.sales[i] : null, strands = s == null || s <= 1 ? 1 : s <= 5 ? 2 : 3;
-    const offs = strands === 1 ? [0] : strands === 2 ? [-1.4, 1.4] : [-2, 0, 2];
-    let seg = "";
-    for (const o of offs) {
-      const pts = [];
-      for (let k = 0; k <= 8; k++) { const [x, y] = P(t[i - 1] + (t[i] - t[i - 1]) * k / 8, o * (mini ? 0.5 : 1)); pts.push(x.toFixed(1) + "," + y.toFixed(1)); }
-      seg += `<path d="M${pts.join(" L")}" style="fill:none;stroke:${col};stroke-width:${(sw / strands * (strands > 1 ? 1.4 : 1)).toFixed(2)}px;stroke-linecap:round" opacity="${l == null ? .9 : .88}"/>`;
-    }
-    if (t[i] > lastTurn) nw += seg; else old += seg;
+/* ---------- the fingerprint, ported 1:1 from the lab's drawing/fx/v3/ringprint3.py ring_svg() (27 Nov) ----------
+   One continuous spiral, one turn per month (each month starts at 12 o'clock), oldest at the centre; weeks from Monday 4 Mar 2024.
+   Colour = above (orange) / below (grey) fair, shaded by the set's print phase; width = size of the gap; strands = sales that week;
+   the line wiggles off its 9-week mean. History (size 400) adds day ticks, month and year labels, event dots, reprint bars,
+   the dotted spiral before price history, and peak / low / now labels at rest. Minis (size 200) are the same line, simpler. */
+const R3 = { START: Date.UTC(2024, 2, 4), WEEK: 7 * 864e5, SF: "-apple-system,'SF Pro Text',Inter,sans-serif", SFM: "ui-monospace,'SF Mono',Menlo,monospace" };
+const ymd = ms => new Date(ms).toISOString().slice(0, 10);
+function mon(ms) { const d = new Date(ms), y = d.getUTCFullYear(), m = d.getUTCMonth(), dim = (Date.UTC(y, m + 1, 1) - Date.UTC(y, m, 1)) / 864e5;
+  return (y - 2024) * 12 + (m + 1) - 3 + (d.getUTCDate() - 1) / dim; }
+const MON3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/* the app's weekly line → ringprint's arrays: weeks start Monday (the refit's week), from 4 Mar 2024; a week without a fair price
+   (before the first refit) is a break; low tier: fair = market, drawn grey, never a break */
+function normW(w, low) {
+  if (!w || !w.weeks || w.weeks.length < 2) return null;
+  const out = { t: [], mk: [], fair: [], sales: [], miss: new Set(), nofair: !!low };
+  w.weeks.forEach((d, i) => {
+    const ms0 = Date.parse(d + "T00:00:00Z"), wd = new Date(ms0).getUTCDay(), ms = ms0 + (wd === 0 ? 1 : 1 - wd) * 864e5;   // → that week's Monday
+    const m = +w.market_chf[i]; if (ms < R3.START || !(m > 0)) return;
+    const f = w.fair_chf ? w.fair_chf[i] : null, s = w.sales ? w.sales[i] : null, k = out.t.length;
+    out.t.push(ms); out.mk.push(m); out.sales.push(s == null ? -1 : +s);
+    if (low) out.fair.push(m); else if (f > 0) out.fair.push(+f); else { out.fair.push(m); out.miss.add(k); }
+  });
+  return out.t.length >= 2 ? out : null;
+}
+function ringSvg(D, { size = 400, uid = "a", mini = false, phases = null, reprints = [], evs = [], rel = null, preEvs = [], name = "" } = {}) {
+  const C = size / 2, RR = size * (mini ? .485 : .47), r0 = size * (mini ? .05 : .085);
+  const { mk, fair, sales, miss, t } = D, N = mk.length;
+  const U = mon(t[N - 1]) + .25, step = (RR - size * (mini ? .01 : .03) - r0) / U;
+  const P = (th, r) => [C + r * Math.cos(th), C + r * Math.sin(th)], pos = (u, extra = 0) => P(-Math.PI / 2 + 2 * Math.PI * u, r0 + u * step + extra);
+  const g = mk.map((a, i) => Math.log(a / fair[i]));
+  const ss = sales.filter(v => v >= 0).sort((a, b) => a - b); if (!ss.length) ss.push(0); const t1 = ss[Math.floor(ss.length / 3)], t2 = ss[Math.floor(2 * ss.length / 3)];
+  const sm = g.map((_, i) => { const a = g.slice(Math.max(0, i - 4), i + 5); return a.reduce((x, y) => x + y, 0) / a.length; });
+  const PH_UP = { new: "var(--fp-1)", print: "var(--fp-2)", oop: "var(--fp-3)" }, PH_DN = { new: "var(--gr-1)", print: "var(--gr-2)", oop: "var(--gr-3)" };
+  const phaseAt3 = ms => { for (const [a, b, ph] of phases || []) if (a <= ms && ms < b) return ph; return null; };
+  const segStyle = i => { const gi = g[i], ph = phaseAt3(t[i]);
+    const col = ph ? (gi > 0 ? PH_UP : PH_DN)[ph] : gi > 0 ? (gi > .25 ? "var(--fp-3)" : gi > .1 ? "var(--fp-2)" : "var(--fp-1)") : "var(--fp-dn)";
+    return [col, 1 + 2.6 * Math.min(1, Math.abs(gi) / .35)]; };
+  const s = [], glow = [], f1 = x => x.toFixed(1), f2 = x => x.toFixed(2);
+  if (!mini) {
+    for (let d = 0; d < 31; d++) { const th = -Math.PI / 2 + 2 * Math.PI * d / 31, a = P(th, RR + size * .008), b = P(th, RR + size * (d % 7 === 0 ? .026 : .017));
+      s.push(`<line x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(b[0])}" y2="${f1(b[1])}" style="stroke:var(--tick);stroke-width:.6px;stroke-opacity:.6"/>`); }
+    const gp = 2.4 * Math.PI / 180;
+    for (const [d0, d1] of [[0, 7], [7, 14], [14, 21], [21, 31]]) { const a = P(-Math.PI / 2 + 2 * Math.PI * d0 / 31 + gp / 2, RR), b = P(-Math.PI / 2 + 2 * Math.PI * d1 / 31 - gp / 2, RR);
+      s.push(`<path d="M${f1(a[0])},${f1(a[1])} A${RR},${RR} 0 0 1 ${f1(b[0])},${f1(b[1])}" style="fill:none;stroke:var(--muted);stroke-width:.7px;stroke-opacity:.45"/>`); }
+    for (const [dn, lab] of [[0, "1st"], [7, "8th"], [14, "15th"], [21, "22nd"]]) { const [x, y] = P(-Math.PI / 2 + 2 * Math.PI * dn / 31, RR + size * .045);
+      s.push(`<text x="${f1(x)}" y="${f1(y)}" font-family="${R3.SFM}" font-size="${f1(size * .032)}" font-weight="600" text-anchor="middle" dominant-baseline="central" class="t-muted">${lab}</text>`); }
   }
-  return `${old}<g class="nw" style="transform-origin:${c}px ${c}px">${nw}</g>`;
+  for (let i = 0; i < N - 1; i++) {
+    if (miss.has(i) || miss.has(i + 1)) continue;
+    const u0 = mon(t[i]), u1 = mon(t[i] + R3.WEEK), [col, wm] = segStyle(i), up = g[i] > 0, rec = i / (N - 1);
+    const k = mini || sales[i] < 0 ? 1 : sales[i] < t1 ? 1 : sales[i] < t2 ? 2 : 3;
+    const fade = mini ? 1 : .45 + .55 * rec, op = (up ? (mini ? .85 : .95) : (mini ? .6 : .8)) * fade, sw = size * (mini ? .005 : .0016) * wm;
+    const wa = Math.max(-1, Math.min(1, (g[i] - sm[i]) / .06)) * step * .42, wb = Math.max(-1, Math.min(1, (g[i + 1] - sm[i + 1]) / .06)) * step * .42;
+    for (let j = 0; j < k; j++) {
+      const off = (j - (k - 1) / 2) * (size * (.0016 * wm + .0012)), pts = [];
+      for (let q = 0; q <= 8; q++) { const f = q / 8; pts.push(pos(u0 + (u1 - u0) * f, off + wa + (wb - wa) * f)); }
+      const el = `<path${i >= N - 5 ? ' class="nw"' : ""} d="M${pts.map(([x, y]) => f1(x) + "," + f1(y)).join(" L")}" style="fill:none;stroke:${col};stroke-width:${f2(sw)}px;stroke-linecap:round" opacity="${f2(op)}"/>`;
+      (up ? glow : s).push(el);
+    }
+  }
+  s.push(`<g filter="url(#${uid}fg)">${glow.join("")}</g>`);
+  for (const rd of reprints) { const u = mon(rd), a = pos(u, -step * 1.1), b = pos(u, step * 1.1);
+    s.push(`<line x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(b[0])}" y2="${f1(b[1])}" style="stroke:var(--ink);stroke-width:${f1(size * .007)}px;stroke-linecap:round"/>`); }
+  const pts = t.map(ms => pos(mon(ms)));                 // each week's place on the spiral (scrubber, drag)
+  if (!mini) {
+    for (const y of [2025, 2026]) { const dd = Date.UTC(y, 6, 1); if (Date.UTC(2024, 2, 1) < dd && dd <= t[N - 1]) { const [x, yy] = pos(mon(dd));
+      s.push(`<text x="${f1(x - size * .016)}" y="${f1(yy)}" font-family="${R3.SFM}" font-size="${f1(size * .03)}" font-weight="600" text-anchor="end" dominant-baseline="central" class="t-muted halo">Jul</text>`);
+      s.push(`<line x1="${f1(x - size * .011)}" y1="${f1(yy)}" x2="${f1(x - size * .002)}" y2="${f1(yy)}" style="stroke:var(--muted);stroke-width:.8px"/>`); } }
+    for (const yr of [2025, 2026]) { const [x, y] = pos(mon(Date.UTC(yr, 0, 1))), w = size * .1;
+      s.push(`<rect x="${f1(x - w / 2)}" y="${f1(y - size * .019)}" width="${f1(w)}" height="${f1(size * .038)}" rx="${f1(size * .019)}" style="fill:var(--card);stroke:var(--rule)"/>`);
+      s.push(`<text x="${f1(x)}" y="${f1(y + size * .001)}" font-family="${R3.SFM}" font-size="${f1(size * .025)}" font-weight="600" text-anchor="middle" dominant-baseline="central" class="t-ink">${yr}</text>`); }
+    evs.forEach((e, i) => { if (e.ms < R3.START || e.ms > t[N - 1] + R3.WEEK) return; const [x, y] = pos(mon(e.ms)); const d = new Date(e.ms);
+      s.push(`<circle class="ev" data-e="${i}" cx="${f1(x)}" cy="${f1(y)}" r="${f1(size * .0068)}" style="fill:var(--card);stroke:var(--fp-ev);stroke-width:1px"><title>${esc(e.label)}, ${String(d.getUTCDate()).padStart(2, "0")} ${MON3[d.getUTCMonth()]} ${d.getUTCFullYear()}</title></circle>`); });
+    { const [x, y] = pos(mon(R3.START)); s.push(`<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(size * .006)}" style="fill:var(--ink)"/>`); }
+    { const [x, y] = pos(mon(t[N - 1])); s.push(`<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(size * .016)}" style="fill:none;stroke:var(--ink);stroke-width:1.3px"/><circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(size * .006)}" style="fill:var(--ink)"/>`); }
+    // 1) dotted spiral before price history: from the card's release to the start, squeezed into the core
+    if (rel != null && rel < R3.START) { const u_rel = mon(rel), rin = size * .018, ppos = u => P(-Math.PI / 2 + 2 * Math.PI * u, rin + (u - u_rel) / (0 - u_rel) * (r0 - rin));
+      for (let u = u_rel; u < 0; u += 1 / 23.7) { const [x, y] = ppos(u); s.push(`<circle cx="${f1(x)}" cy="${f1(y)}" r="${(size * .0022).toFixed(2)}" style="fill:var(--muted)" opacity=".55"/>`); }
+      for (const ed of preEvs) if (rel <= ed && ed < R3.START) { const [x, y] = ppos(mon(ed)); s.push(`<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(size * .0055)}" style="fill:var(--card);stroke:var(--fp-ev);stroke-width:1px"><title>before price history</title></circle>`); } }
+    // 2) peak, low and now labelled at rest (labels that would overlap are moved apart)
+    if (!D.nofair) {
+      const iN = N - 1, ok = [...Array(N).keys()].filter(i => !miss.has(i)), okk = ok.length ? ok : [...Array(N).keys()];
+      const ip = okk.reduce((a, b) => g[b] > g[a] ? b : a), il = okk.reduce((a, b) => g[b] < g[a] ? b : a), placed = [];
+      const pct0 = v => (v >= 0 ? "+" : "−") + Math.abs(Math.round(v)) + " %", pct1 = v => (Math.abs(v) < 10 ? (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) : (v >= 0 ? "+" : "−") + Math.abs(Math.round(v))) + " %";
+      for (const [i, lab] of [[ip, "peak"], [il, "low"], [iN, "now"]]) {
+        const d = new Date(t[i]), u = mon(t[i]), th = -Math.PI / 2 + 2 * Math.PI * u, [x, y] = pos(u), v = Math.exp(g[i]) * 100 - 100;
+        const txt = lab !== "now" ? `${lab} ${MON3[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)} · ${pct0(v)}` : "now · " + pct1(v);
+        const fs = size * .034, tw = txt.length * fs * .56 + size * .03, R2 = RR + size * .012, [ex, ey] = P(th, R2), right = Math.cos(th) >= 0;
+        let bx = Math.min(Math.max(right ? ex + size * .01 : ex - tw - size * .01, -size * .06), size * 1.06 - tw), by = Math.min(Math.max(ey - fs * .75, -size * .06), size * 1.03);
+        for (let n = 0; n < 6; n++) { if (!placed.some(([px, py, pw]) => bx < px + pw && px < bx + tw && by < py + fs * 1.5 + size * .008 && py < by + fs * 1.5 + size * .008)) break; by += ey < size / 2 ? fs * 1.75 : -fs * 1.75; }
+        placed.push([bx, by, tw]);
+        s.push(`<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(size * .011)}" style="fill:var(--card);stroke:var(--ink);stroke-width:1.4px"/>`);
+        s.push(`<line x1="${f1(x)}" y1="${f1(y)}" x2="${f1(right ? bx : bx + tw)}" y2="${f1(by + fs * .75)}" style="stroke:var(--muted);stroke-width:.6px;stroke-opacity:.8"/>`);
+        s.push(`<rect x="${f1(bx)}" y="${f1(by)}" width="${f1(tw)}" height="${f1(fs * 1.5)}" rx="${f1(fs * .4)}" style="fill:var(--card);stroke:var(--rule)"/>`);
+        s.push(`<text x="${f1(bx + tw / 2)}" y="${f1(by + fs * .78)}" font-family="${R3.SF}" font-size="${f1(fs)}" font-weight="600" text-anchor="middle" dominant-baseline="central" class="t-ink">${txt}</text>`);
+      }
+    }
+  }
+  const defs = `<defs><filter id="${uid}fg" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur in="SourceGraphic" stdDeviation="${mini ? 3 : 2.4}" result="b0"/>` +
+    `<feComponentTransfer in="b0" result="b"><feFuncA type="linear" slope="${mini ? .35 : .45}"/></feComponentTransfer><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+  const pad = size * (mini ? .02 : .065), vb = Math.round(-pad), vs = Math.round(size + 2 * pad);
+  return { pts, svg: `<svg class="${mini ? "fp mini" : "fp"}" viewBox="${vb} ${vb} ${vs} ${vs}" role="img" aria-label="Fingerprint of ${esc(name)}: one spiral turn per month since March 2024, ${D.nofair ? "grey throughout: low-tier cards have no fair price" : "orange where the price sat above the fair price"}">${defs}${s.join("")}</svg>` };
 }
-function miniSvg(r) {
-  const w = FP.weekly[r.card_id];
-  if (!w || !w.weeks || w.weeks.length < 2)
-    return `<svg viewBox="0 0 64 64" role="img" aria-label="No history yet"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--gr-2)" stroke-width="1.5" stroke-dasharray="2 4"/><text class="none" x="32" y="35" text-anchor="middle">none yet</text></svg>`;
-  return `<svg viewBox="-4 -4 208 208" role="img" aria-label="Fingerprint of ${esc(r.name)}: one spiral turn per month since March 2024, orange where the price sat above the fair price">${spiral(w, { mini: true })}</svg>`;
-}
+
+const NONE_YET = `<svg viewBox="0 0 64 64" role="img" aria-label="No history yet"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--gr-2)" stroke-width="1.5" stroke-dasharray="2 4"/><text class="none" x="32" y="35" text-anchor="middle">none yet</text></svg>`;
+let MINI_N = 0;
+function miniFor(w, name, low) { const D = normW(w, low); return D ? ringSvg(D, { size: 200, mini: true, uid: "m" + (MINI_N++), name }).svg : NONE_YET; }
+function miniSvg(r) { return miniFor(FP.weekly[r.card_id], r.name, r.segment === "low"); }
+// life-cycle phases for the ring: pf_events P32 rows → [from, to, new | print | oop]
+const ringPhases = phases => (phases || []).map(p => [Date.parse(p.day + "T00:00:00Z"), p.day_end ? Date.parse(p.day_end + "T00:00:00Z") : Infinity, /new/i.test(p.label) ? "new" : /out/i.test(p.label) ? "oop" : "print"]);
 
 /* ---------- breathing (§1 motion): one breath every 14 − 1.8·ln(1 + weekly sales) s, never faster than 7.5 s ---------- */
 const breathers = [];
 function period(sales4w) { return Math.max(7.5, 14 - 1.8 * Math.log(1 + (sales4w || 0) / 4)); }
 function frame(ms) {
-  if (!REDUCE.matches) for (const b of breathers) {
-    if (!b.el.isConnected) continue;
-    const s = 1 + b.depth * (0.5 - 0.5 * Math.cos(2 * Math.PI * (ms / 1000) / b.per));
-    b.el.style.transform = `scale(${s.toFixed(4)})`;
-  } else for (const b of breathers) b.el.style.transform = "";
-  requestAnimationFrame(frame);
+  for (const b of breathers) {
+    if (!b.els.length || !b.els[0].isConnected) continue;
+    const k = REDUCE.matches ? 1 : 1 + b.depth * (0.5 - 0.5 * Math.cos(2 * Math.PI * (ms / 1000) / b.per)), c = b.c;
+    for (const e of b.els) if (REDUCE.matches) e.removeAttribute("transform"); else e.setAttribute("transform", `translate(${c} ${c}) scale(${k.toFixed(4)}) translate(${-c} ${-c})`);
+  }
+requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
@@ -127,8 +204,8 @@ async function collection() {
     <p class="foot">TCGplayer market price · fair price from HoloTrack's model (weekly refit). Each fingerprint: one turn per month since March 2024, orange where the market sat above the fair price.</p>`;
   breathers.length = 0;
   document.querySelectorAll(".crow").forEach(b => {
-    const r = rows.find(x => x.card_id === b.dataset.id), g = b.querySelector("g.nw");
-    if (g) breathers.push({ el: g, per: period(r.sales_4w), depth: 0.03 });     // half depth for the minis
+    const r = rows.find(x => x.card_id === b.dataset.id), els = [...b.querySelectorAll("path.nw")];
+    if (els.length) breathers.push({ els, per: period(r.sales_4w), depth: 0.007, c: 100 });     // half depth for the minis (prototype)
     b.onclick = () => { location.hash = "card/" + encodeURIComponent(b.dataset.id); };
   });
   cgroupBind();
@@ -543,29 +620,28 @@ async function loadHist(C) {
     }
   }
 }
-function histPane(C) {
-  const h = C.h, w = FP.weekly[h.card_id];
-  if (!w || !w.weeks || w.weeks.length < 2) return `<div class="box"><div class="empty" style="padding:20px 8px"><b>No history yet</b><p>HoloTrack has not exported ${esc(h.name)}'s weekly line. Today's figures are real; the spiral appears once the weekly file arrives.</p></div></div>`;
-  const low = h.segment === "low";
-  const ww = low ? { ...w, fair_chf: w.weeks.map(() => null) } : w;
-  const t = w.weeks.map(d => Date.parse(d + "T00:00:00Z")), t0 = Math.min(t[0], T0), span = Math.max(1, t.at(-1) - t0);
-  const pos = ms => { const a = 2 * Math.PI * (ms - T0) / MONTH - Math.PI / 2, f = Math.max(0, (ms - t0) / span), r = 14 + 80 * f; return [100 + r * Math.cos(a), 100 + r * Math.sin(a)]; };
-  const evs = (C.events || []).filter(e => { const ms = Date.parse(e.day + "T00:00:00Z"); return ms >= t[0] && ms <= t.at(-1); });
-  const dots = evs.map((e, i) => { const [x, y] = pos(Date.parse(e.day + "T00:00:00Z")); return `<circle class="ev" data-e="${i}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2"><title>${esc(e.label)}</title></circle>`; }).join("");
-  C._hist = { w, t, pos, evs, low };
+function histPane(C) {                                   // (27 Nov) the prototype's History: ringprint3.py ring_svg at size 400
+  const h = C.h, low = h.segment === "low", D = normW(FP.weekly[h.card_id], low);
+  if (!D) return `<div class="box"><div class="empty" style="padding:20px 8px"><b>No history yet</b><p>HoloTrack has not exported ${esc(h.name)}'s weekly line. Today's figures are real; the spiral appears once the weekly file arrives.</p></div></div>`;
+  const E = (C.events || []).map(e => ({ ...e, ms: Date.parse(e.day + "T00:00:00Z") }));
+  const isRe = e => e.n === "P58";                         // reprint waves of the set: bars across the line, as the prototype's Charizard
+  const evs = E.filter(e => !isRe(e) && e.ms >= R3.START), ph = ringPhases(C.phases), rel = (ph.find(p => p[2] === "new") || [])[0];
+  const R = ringSvg(D, { size: 400, uid: "r" + h.card_id.replace(/\W/g, ""), phases: ph, evs, reprints: E.filter(isRe).map(e => e.ms),
+    rel: rel ?? null, preEvs: E.filter(e => !isRe(e) && e.ms < R3.START).map(e => e.ms), name: h.name });
+  C._hist = { D, pts: R.pts, evs, low };
+  const mkr = `<g id="mkr" pointer-events="none"><circle r="9" style="fill:none;stroke:var(--card);stroke-width:5px"/><circle r="9" style="fill:none;stroke:var(--ink);stroke-width:2px"/><circle r="2.6" style="fill:var(--ink)"/></g>`;
   return `<div class="box ringbox"><div class="ro"><span class="d" id="ro-d"></span><span class="g" id="ro-g"></span><span class="m" id="ro-m"></span><span class="s" id="ro-s"></span></div>
-    <svg class="fp big" id="fpbig" viewBox="-4 -4 208 208" role="img" aria-label="Fingerprint of ${esc(h.name)}: one spiral turn per month since March 2024${low ? ", grey throughout: low-tier cards have no fair price" : ", orange where the market sat above the fair price"}">${spiral(ww, { phases: C.phases })}<g class="evs">${dots}</g><circle id="mkr" r="4.5" class="mkr"/></svg>
-    <input type="range" id="scrub" min="0" max="${w.weeks.length - 1}" value="${w.weeks.length - 1}" aria-label="Week">
+    ${R.svg.replace('<svg class="fp"', '<svg class="fp big" id="fpbig"').replace(/<\/svg>$/, mkr + "</svg>")}
+    <input type="range" id="scrub" min="0" max="${D.t.length - 1}" value="${D.t.length - 1}" aria-label="Week">
     <p class="hint">Drag along the spiral or the slider · tap a dot for its event · one turn per month · ${low ? "grey throughout: low-tier cards have no fair price" : "orange = above fair price"}</p>
-    ${C.phases && C.phases.length ? `<div class="phk" aria-label="Shade by the set's print phase">${[[1, "new print"], [2, "in print"], [3, "out of print"]].map(([k, l]) => `<span><i style="background:var(--${low ? "gr" : "fp"}-${k})"></i><i style="background:var(--gr-${k})"></i>${l}</span>`).join("")}</div>` : ""}
     <p class="evl" id="evl" hidden></p></div>`;
 }
 function histWeek(i) {
   const H = FP.card && FP.card._hist; if (!H) return;
-  const { w, t, pos, low } = H, m = w.market_chf[i], f = low ? null : (w.fair_chf || [])[i], s = (w.sales || [])[i];
-  const [x, y] = pos(t[i]); const mk = $("mkr"); if (mk) { mk.setAttribute("cx", x.toFixed(1)); mk.setAttribute("cy", y.toFixed(1)); }
+  const { D, pts, low } = H, m = D.mk[i], f = low || D.miss.has(i) ? null : D.fair[i], s = D.sales[i] >= 0 ? D.sales[i] : null;
+  const mk = $("mkr"); if (mk) mk.setAttribute("transform", `translate(${pts[i][0].toFixed(1)} ${pts[i][1].toFixed(1)})`);
   $("scrub").value = i;
-  $("ro-d").textContent = "Week of " + new Date(t[i]).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  $("ro-d").textContent = "Week of " + new Date(D.t[i]).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   $("ro-m").textContent = chf(m);
   const g = f ? gap(Math.log(m / f)) : null;
   $("ro-g").innerHTML = g ? `<span class="${g.cls}">${g.txt}</span> fair` : "";
@@ -574,17 +650,20 @@ function histWeek(i) {
 }
 function histWire() {
   const H = FP.card && FP.card._hist, svg = $("fpbig"); if (!H || !svg) return;
-  histWeek(H.w.weeks.length - 1);
+  histWeek(H.pts.length - 1);
   $("scrub").oninput = e => histWeek(+e.target.value);
-  const near = ev => { const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; const q2 = p.matrixTransform(svg.getScreenCTM().inverse());
-    let bi = 0, bd = 1e9; H.t.forEach((ms, i) => { const [x, y] = H.pos(ms), d = (x - q2.x) ** 2 + (y - q2.y) ** 2; if (d < bd) { bd = d; bi = i; } }); return bi; };
+  const sp = ev => { const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); };
+  const near = ev => { const q2 = sp(ev); let bi = 0, bd = 1e9; H.pts.forEach(([x, y], i) => { const d = (x - q2.x) ** 2 + (y - q2.y) ** 2; if (d < bd) { bd = d; bi = i; } }); return bi; };
+  const showEv = i => { const e = H.evs[i], el = $("evl");
+    el.hidden = false; el.innerHTML = `<b>${new Date(e.ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}</b> · ${esc(eventLabel(e))}`;
+    let k = H.D.t.findIndex(x => x >= e.ms); if (k < 0) k = H.D.t.length - 1; histWeek(k); };
+  const evHit = ev => { const q2 = sp(ev); let b = null, bd = 110; svg.querySelectorAll("circle.ev").forEach(c => { const d = (+c.getAttribute("cx") - q2.x) ** 2 + (+c.getAttribute("cy") - q2.y) ** 2; if (d < bd) { bd = d; b = +c.dataset.e; } }); return b; };
   let drag = false;
-  svg.addEventListener("pointerdown", ev => { if (ev.target.classList.contains("ev")) return; drag = true; svg.setPointerCapture(ev.pointerId); histWeek(near(ev)); });
+  svg.addEventListener("pointerdown", ev => { const v = evHit(ev); if (v != null) { showEv(v); return; } $("evl").hidden = true; drag = true; svg.setPointerCapture(ev.pointerId); histWeek(near(ev)); });
   svg.addEventListener("pointermove", ev => { if (drag) histWeek(near(ev)); });
-  svg.addEventListener("pointerup", () => { drag = false; });
-  svg.querySelectorAll(".ev").forEach(d => d.onclick = () => { const e = H.evs[+d.dataset.e], el = $("evl");
-    el.hidden = false; el.innerHTML = `<b>${new Date(e.day).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</b> · ${esc(eventLabel(e))}`;
-    const ms = Date.parse(e.day + "T00:00:00Z"); let i = H.t.findIndex(x => x >= ms); if (i < 0) i = H.t.length - 1; histWeek(i); });
+  svg.addEventListener("pointerup", () => { drag = false; }); svg.addEventListener("pointercancel", () => { drag = false; });
+  const els = [...svg.querySelectorAll("path.nw")];
+  if (els.length) breathers.push({ els, per: period(FP.card.h.sales_4w), depth: 0.014, c: 200 });
 }
 async function card(id) {
   FP.tab = "collection";
@@ -598,8 +677,7 @@ async function card(id) {
   $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
     <h1 class="cardt">${esc(h.name)}</h1>${C.nick ? `<p class="nick">Known to collectors as ${esc(C.nick.nickname)}</p>` : ""}<p class="sub">${h.character ? `<a class="setl" href="#char/${encodeURIComponent(h.character)}">${esc(h.character)}</a> · ` : ""}<a class="setl" href="#set/${encodeURIComponent(h.set_id)}">${esc(h.set_name || h.set_id)}</a> · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
     <div class="segc" role="tablist"><button role="tab" data-p="today" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" data-p="why" aria-selected="false">Why</button>`}<button role="tab" data-p="hist" aria-selected="false">History</button></div>
-    ${headerBox(h)}
-    <div id="p-today"><div class="box flowbox">${flowSvg(C, T)}<p class="hint">Tap a string or a name, or pick from the list below</p></div>
+    <div id="p-today">${headerBox(h)}<div class="box flowbox">${flowSvg(C, T)}<p class="hint">Tap a string or a name, or pick from the list below</p></div>
     ${plist(C, T)}</div><div id="p-why" hidden>${h.segment === "low" ? "" : whyPane(C)}</div><div id="p-hist" hidden></div>`;
   document.querySelectorAll(".segc [data-p]").forEach(b => b.onclick = async () => {
     const t = b.dataset.p;
@@ -617,9 +695,8 @@ async function card(id) {
 /* ---------- Compare (spec §5) ---------- */
 function cropW(w, weeks) { if (!w || !w.weeks) return w; const k = Math.max(0, w.weeks.length - weeks); return { weeks: w.weeks.slice(k), market_chf: w.market_chf.slice(k), fair_chf: (w.fair_chf || []).slice(k), sales: (w.sales || []).slice(k) }; }
 function miniOf(id, name, weeks) {
-  const w = FP.weekly[id];
-  if (!w || !w.weeks || w.weeks.length < 2) return `<svg viewBox="0 0 64 64" role="img" aria-label="No history yet"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--gr-2)" stroke-width="1.5" stroke-dasharray="2 4"/><text class="none" x="32" y="35" text-anchor="middle">none yet</text></svg>`;
-  return `<svg viewBox="-4 -4 208 208" role="img" aria-label="Fingerprint of ${esc(name)}">${spiral(weeks ? cropW(w, weeks) : w, { mini: true })}</svg>`;
+  const w = FP.weekly[id], r = (FP.rows || []).find(x => x.card_id === id);
+  return miniFor(weeks && w ? cropW(w, weeks) : w, name, r ? r.segment === "low" : false);
 }
 async function compare() {
   $("view").innerHTML = head() + `<h1>Compare</h1><p class="sub">Loading…</p>`;
