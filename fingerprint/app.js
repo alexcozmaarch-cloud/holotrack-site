@@ -568,7 +568,8 @@ function stepLabel(C, p) {                               // the fixture's labels
   const h = C.h;
   if (p.n === 1) return h.character || "";
   if (p.n === 10) return (LOOK[h.look] || h.look || "").toLowerCase();
-  if (p.n === 3 && p.raw) { const m = String(p.raw).match(/([\d.]+)\s*USD/); return m ? `USD ${Math.round(+m[1]).toLocaleString("en-US")} to pull` : p.raw; }
+  if (p.n === 3 && p.raw) { const m = String(p.raw).match(/([\d.]+)\s*USD/); if (!m) return p.raw;
+    return h.usd_chf ? `CHF ${Math.round(+m[1] * h.usd_chf).toLocaleString("en-US")} to pull` : `USD ${Math.round(+m[1]).toLocaleString("en-US")} to pull`; }   // (27 Nov) CHF as the prototype
   return p.raw || "";
 }
 function whyPane(C) {                                    // (27 Nov) the prototype's why(): one line per step with the running price
@@ -649,8 +650,8 @@ function histWeek(i) {
   $("scrub").value = i;
   $("ro-d").textContent = "Week of " + new Date(D.t[i]).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   $("ro-m").textContent = chf(m);
-  const g = f ? gap(Math.log(m / f)) : null;
-  $("ro-g").innerHTML = g ? `<span class="${g.cls}">${g.txt}</span> fair` : "";
+  const r = f ? m / f : null;                              // the prototype's readout: always "×1.1 fair" (lab / Alex 27 Nov)
+  $("ro-g").innerHTML = r ? `<span style="color:${r > 1 ? "var(--fp-up)" : "var(--muted)"}">${xm(r)} fair</span>` : "";
   $("ro-s").textContent = low ? `low tier · no fair price${s != null ? ` · ${s} sales that week` : ""}`
     : (f ? `fair ${chf(f)}` : "no fair price yet (before the first refit)") + " · " + (s != null ? `${s} sale${s === 1 ? "" : "s"} that week` : "sales not counted yet");
 }
