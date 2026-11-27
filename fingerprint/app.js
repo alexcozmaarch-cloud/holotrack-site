@@ -1130,3 +1130,15 @@ $("f").onsubmit = async e => {
 };
 start();
 if ("serviceWorker" in navigator && !PREVIEW) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+/* (27 Nov, Alex: "a top-of-screen toggle to switch between dark and light modes") dark by default, remembered on this device;
+   the button sits in every screen's top bar, next to PRIVATE */
+(function themeToggle() {
+  const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>';
+  const set = t => { document.documentElement.dataset.theme = t; try { localStorage.setItem("fp-theme", t); } catch (e) {}
+    const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", t === "dark" ? "#000000" : "#F4F4F6"); };
+  const add = () => document.querySelectorAll(".top").forEach(t => { if (t.querySelector(".thb")) return; const b = document.createElement("button");
+    b.type = "button"; b.className = "thb"; b.innerHTML = icon; b.setAttribute("aria-label", "Switch light / dark");
+    b.onclick = () => set(document.documentElement.dataset.theme === "dark" ? "light" : "dark"); const p = t.querySelector(".private"); t.insertBefore(b, p || null); });
+  new MutationObserver(add).observe(document.body, { childList: true, subtree: true }); add();
+})();

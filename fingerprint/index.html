@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <!-- Fingerprint app v0 (24 Nov, decided in the Fingerprint chat): private — sign-in + allow-list, nothing published.
      Milestone 1: sign-in gate, empty shell, tab bar Collection · Movers · Compare, design tokens, data views (fp_*). -->
+<script>try{ document.documentElement.dataset.theme = localStorage.getItem("fp-theme") || "dark"; }catch(e){ document.documentElement.dataset.theme = "dark"; }</script>
 <style>
 :root{
   --bg:#F4F4F6;--card:#FFFFFF;--ink:#111214;--muted:#6B6B72;--rule:#DADADF;--fill:#EBEBEF;
@@ -58,6 +59,7 @@ h1{margin:6px 0 2px;font-size:34px;line-height:41px;font-weight:700;letter-spaci
 .tabbar svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .top{display:flex;justify-content:space-between;align-items:center;min-height:44px}
 .top button{all:unset;cursor:pointer;font-size:15px;color:var(--muted);min-height:44px;display:flex;align-items:center}
+.top .thb{margin-left:auto;margin-right:8px;min-height:0;width:30px;height:30px;border-radius:999px;border:1px solid var(--rule);background:var(--card);color:var(--ink);display:inline-grid;place-items:center;padding:0;cursor:pointer}.top .thb svg{width:16px;height:16px}
 .private{font:500 11px var(--mono);letter-spacing:.06em;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:3px 9px}
 /* collection (spec §2) */
 .list{background:var(--card);border-radius:12px;overflow:hidden}
