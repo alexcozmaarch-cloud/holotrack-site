@@ -10,23 +10,23 @@
 <link rel="icon" href="../assets/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@800&family=Instrument+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
 /* Art Duel (23 Nov, Fingerprint inbox Decided): one pair at a time on black, the HoloTrack mock-up's type and spacing */
-:root{--bg:#000;--card:#1c1c1e;--line:#2c2c2e;--ring:#38383a;--fg:#f4f4f5;--muted:#9c9ca3;--faint:#6e6e74;--cyan:#02ecfa;color-scheme:dark}
+:root{--bg:#000;--card:#1c1c1e;--line:#2c2c2e;--ring:#38383a;--fg:#f4f4f5;--muted:#9c9ca3;--faint:#6e6e74;--cyan:#F4F4F6;color-scheme:dark}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--fg)}
-body{font:400 16px/1.45 "Instrument Sans",-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+body{font:400 16px/1.45 "Inter",-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
 .wrap{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;gap:18px;
   padding-block:max(20px,env(safe-area-inset-top,0px)) max(24px,env(safe-area-inset-bottom,0px));
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .mono{font:600 11px/1.3 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .top{display:flex;align-items:center;justify-content:space-between}
-.brand{display:flex;align-items:center;gap:8px;color:var(--fg);text-decoration:none;font:800 18px/1 "Schibsted Grotesk",sans-serif;letter-spacing:-.02em}
+.brand{display:flex;align-items:center;gap:8px;color:var(--fg);text-decoration:none;font:800 18px/1 "Inter",sans-serif;letter-spacing:-.02em}
 .brand svg{width:26px;height:26px}
 .bar{height:4px;background:var(--line);border-radius:2px}.bar i{display:block;height:4px;background:var(--fg);border-radius:2px;width:0;transition:width .25s}
 .prog{display:flex;justify-content:space-between}
-h1{margin:0;font:800 clamp(26px,7vw,32px)/1.04 "Schibsted Grotesk",sans-serif;letter-spacing:-.02em;text-wrap:balance}
+h1{margin:0;font:800 clamp(26px,7vw,32px)/1.04 "Inter",sans-serif;letter-spacing:-.02em;text-wrap:balance}
 .pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .pick{appearance:none;border:0;background:none;color:inherit;padding:0;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:8px;font:inherit;min-width:0}
 .pick .art{position:relative;aspect-ratio:63/88;border-radius:10px;background:var(--card);overflow:hidden;box-shadow:0 0 0 1px var(--ring);transition:box-shadow .15s,opacity .2s}
@@ -203,22 +203,22 @@ async function share(){
   const g=x.createLinearGradient(0,150,0,250); g.addColorStop(0,"#FFFFFF"); g.addColorStop(1,"#9A9AA2");
   const mark=new Image(); mark.src="data:image/svg+xml,"+encodeURIComponent(document.querySelector(".brand svg").outerHTML.replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" width="200" height="206" '));
   try{ await mark.decode(); x.drawImage(mark,90,150,96,99); }catch(e){ x.fillStyle=g; x.beginPath(); x.roundRect(90,150,96,99,20); x.fill(); }
-  x.fillStyle="#f4f4f5"; x.font='800 54px "Schibsted Grotesk", sans-serif'; x.fillText("HoloTrack",210,218);
+  x.fillStyle="#f4f4f5"; x.font='800 54px "Inter", sans-serif'; x.fillText("HoloTrack",210,218);
   x.fillStyle="#9c9ca3"; x.font='600 30px "IBM Plex Mono", monospace'; x.fillText("ART DUEL · 10 PICKS",90,380);
-  x.fillStyle="#f4f4f5"; x.font='800 120px "Schibsted Grotesk", sans-serif'; x.fillText("My art",90,520); x.fillText("taste",90,640);
+  x.fillStyle="#f4f4f5"; x.font='800 120px "Inter", sans-serif'; x.fillText("My art",90,520); x.fillText("taste",90,640);
   const NB=((res&&res.bars)||[]).length, bars_h=NB>3?150:180; let y=780; for(const b of ((res&&res.bars)||[])){ const you=pc(b.you), all=pc(b.all);
-    x.font='600 40px "Instrument Sans", sans-serif'; x.fillStyle="#f4f4f5"; x.fillText(b.left,90,y); x.fillStyle="#9c9ca3"; x.textAlign="right"; x.fillText(b.right,990,y); x.textAlign="left";
+    x.font='600 40px "Inter", sans-serif'; x.fillStyle="#f4f4f5"; x.fillText(b.left,90,y); x.fillStyle="#9c9ca3"; x.textAlign="right"; x.fillText(b.right,990,y); x.textAlign="left";
     x.fillStyle="#2c2c2e"; x.beginPath(); x.roundRect(90,y+30,900,22,11); x.fill();
     if(you!=null){ x.fillStyle="#f4f4f5"; x.beginPath(); x.roundRect(90,y+30,Math.max(22,9*you),22,11); x.fill(); }
     if(all!=null){ x.fillStyle="#9c9ca3"; x.fillRect(90+9*all-3,y+18,6,46); }
     y+=bars_h; }
-  x.fillStyle="#9c9ca3"; x.font='400 32px "Instrument Sans", sans-serif'; x.fillText("White bar: me. Grey tick: everyone this week.",90,y-40);
+  x.fillStyle="#9c9ca3"; x.font='400 32px "Inter", sans-serif'; x.fillText("White bar: me. Grey tick: everyone this week.",90,y-40);
   x.fillStyle="#1c1c1e"; x.beginPath(); x.roundRect(90,y+20,900,300,24); x.fill();
   x.fillStyle="#f4f4f5"; x.font='600 64px "IBM Plex Mono", monospace'; x.fillText($("crowd").textContent,130,y+120);
-  x.fillStyle="#9c9ca3"; x.font='400 32px "Instrument Sans", sans-serif'; x.fillText("picks with the crowd",130,y+170);
-  x.fillStyle="#f4f4f5"; x.font='700 44px "Instrument Sans", sans-serif'; x.fillText(($("artist").textContent||"–").slice(0,34),130,y+250);
-  x.fillStyle="#9c9ca3"; x.font='400 32px "Instrument Sans", sans-serif'; x.fillText("the artist I picked most",130,y+295);
-  x.fillStyle="#f4f4f5"; x.font='700 46px "Instrument Sans", sans-serif'; x.fillText("Your turn: holotrackpro.com/duel",90,1760);
+  x.fillStyle="#9c9ca3"; x.font='400 32px "Inter", sans-serif'; x.fillText("picks with the crowd",130,y+170);
+  x.fillStyle="#f4f4f5"; x.font='700 44px "Inter", sans-serif'; x.fillText(($("artist").textContent||"–").slice(0,34),130,y+250);
+  x.fillStyle="#9c9ca3"; x.font='400 32px "Inter", sans-serif'; x.fillText("the artist I picked most",130,y+295);
+  x.fillStyle="#f4f4f5"; x.font='700 46px "Inter", sans-serif'; x.fillText("Your turn: holotrackpro.com/duel",90,1760);
   const blob=await new Promise(r=>c.toBlob(r,"image/png")); const file=new File([blob],"holotrack-art-taste.png",{type:"image/png"});
   try{ if(navigator.canShare&&navigator.canShare({files:[file]})) return await navigator.share({files:[file],title:"My art taste · HoloTrack",text:"Which card art would you frame? holotrackpro.com/duel"}); }catch(e){ if(e&&e.name==="AbortError") return; }
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="holotrack-art-taste.png"; document.body.appendChild(a); a.click(); a.remove();
