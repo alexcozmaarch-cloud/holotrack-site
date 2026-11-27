@@ -20,16 +20,16 @@
 <style>
 :root{
   --bg:#F4F4F6;--card:#FFFFFF;--ink:#111214;--muted:#6B6B72;--rule:#DADADF;--fill:#EBEBEF;
-  --fp-1:#FFC98A;--fp-2:#FFAE42;--fp-3:#FF7A00;--fp-up:#C2540A;--gr-1:#DEDEE2;--gr-2:#B4B4BA;--gr-3:#7E7E84;--fp-dn:#C2C2C8;--tick:#C7C7CC;--fp-ev:#000000;
+  --fp-1:#FFC98A;--fp-2:#FFAE42;--fp-3:#FF7A00;--fp-up:#C2540A;--gr-1:#DEDEE2;--gr-2:#B4B4BA;--gr-3:#7E7E84;--tint:#007AFF;--fp-dn:#C2C2C8;--tick:#C7C7CC;--fp-ev:#000000;
   --sf:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Arial,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
   color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#000000;--card:#1C1C1E;--ink:#FFFFFF;--muted:#98989F;--rule:#38383A;--fill:#2C2C2E;
-  --fp-1:#8F5A1E;--fp-2:#D9862A;--fp-3:#FF8A0A;--fp-up:#FF9A2E;--gr-1:#3A3A3E;--gr-2:#5E5E64;--gr-3:#8E8E94;--fp-dn:#4A4A50;--tick:#48484A;--fp-ev:#FFFFFF;color-scheme:dark}}
+  --fp-1:#8F5A1E;--fp-2:#D9862A;--fp-3:#FF8A0A;--fp-up:#FF9A2E;--gr-1:#3A3A3E;--gr-2:#5E5E64;--gr-3:#8E8E94;--tint:#0A84FF;--fp-dn:#4A4A50;--tick:#48484A;--fp-ev:#FFFFFF;color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#000000;--card:#1C1C1E;--ink:#FFFFFF;--muted:#98989F;--rule:#38383A;--fill:#2C2C2E;
-  --fp-1:#8F5A1E;--fp-2:#D9862A;--fp-3:#FF8A0A;--fp-up:#FF9A2E;--gr-1:#3A3A3E;--gr-2:#5E5E64;--gr-3:#8E8E94;--fp-dn:#4A4A50;--tick:#48484A;--fp-ev:#FFFFFF;color-scheme:dark}
+  --fp-1:#8F5A1E;--fp-2:#D9862A;--fp-3:#FF8A0A;--fp-up:#FF9A2E;--gr-1:#3A3A3E;--gr-2:#5E5E64;--gr-3:#8E8E94;--tint:#0A84FF;--fp-dn:#4A4A50;--tick:#48484A;--fp-ev:#FFFFFF;color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sf);-webkit-font-smoothing:antialiased}
@@ -127,8 +127,6 @@ em.up,b.up{color:var(--fp-up)}
 .sheet p{margin:0;font-size:15px;line-height:1.45}
 .chip{display:inline-block;font-size:12px;font-weight:600;border:1px solid var(--rule);border-radius:999px;padding:3px 10px;color:var(--muted)}
 .chip.ink{background:var(--ink);color:var(--card);border-color:var(--ink)}
-.on{margin-top:14px;background:var(--bg);border-radius:10px;padding:12px}
-.on .big{display:block;font-size:28px;margin:4px 0}
 .snav{display:flex;justify-content:space-between;margin-top:18px}
 .snav button{all:unset;cursor:pointer;font-size:15px;font-weight:600;min-height:44px;display:flex;align-items:center}
 /* flow (spec §3.1) */
@@ -219,6 +217,33 @@ svg.sline,svg.sseal{width:100%;height:auto;display:block;margin-top:8px;touch-ac
 .sp{fill:none;stroke:var(--ink);stroke-width:2}.sk{fill:none;stroke:var(--gr-2);stroke-width:1.5;stroke-dasharray:4 3}.sc{fill:none;stroke:var(--gr-3);stroke-width:1.5}
 .sbx b{font-size:15px}.sub2{display:block;font-size:12px;color:var(--muted)}.sfact{margin:8px 0 0;font-size:13px}
 details.lowd{margin-top:10px}details.lowd summary{cursor:pointer;font-size:14px;color:var(--muted);padding:8px 4px}
+
+/* (27 Nov) the prototype's look for the card header, Why, the sheet, Compare (lab rulings 2–6) */
+.top .bk{color:var(--tint);font-size:17px;gap:4px}.top .bk svg{width:11px;height:19px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.csub{margin:2px 0 0}.csub .setl,.facts .setl{color:inherit;text-decoration:none}
+p.nick{margin:2px 0 12px;font-size:15px;color:var(--ink)}p.nick b{font-weight:600}
+.csub+.segc,.csub~.segc{margin-top:12px}
+.why .cmpw{margin:0 0 8px;font:600 12px var(--mono);letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+.why p.lead{margin:0 0 12px;font-size:15px;line-height:1.45}
+.why .note{font-size:13px;color:var(--muted);line-height:1.4;margin:10px 0 0}
+.wchart{width:100%;height:auto;display:block;overflow:visible}
+.sh-top{display:flex;justify-content:space-between;align-items:center;font:600 12px var(--mono);color:var(--muted);letter-spacing:.04em}
+.sh-top button{all:unset;cursor:pointer;font:600 15px var(--sf);color:var(--tint);padding:4px 0 4px 10px;min-height:36px;display:flex;align-items:center}
+.sheet h3#s-name{margin:6px 0 8px;font-size:24px;line-height:1.15;color:var(--ink);font-weight:700}
+.sheet .chip{border:0;background:var(--fill);color:var(--ink);padding:4px 10px}.sheet .chip.counted{background:var(--ink);color:var(--card)}
+.oncard{margin:12px 0 4px;padding:12px;border-radius:10px;background:var(--bg);font-size:15px;line-height:1.4}
+.oncard b,.oncard .big{display:block;font-size:22px;font-variant-numeric:tabular-nums;margin:0}.oncard b.up,.oncard .big.up{color:var(--fp-up)}
+.sheet dl{margin:12px 0 0}.sheet dt{font-size:12px;font-weight:600;color:var(--muted);margin-top:12px;text-transform:uppercase;letter-spacing:.04em}.sheet dd{margin:3px 0 0;font-size:15px;line-height:1.45}
+.pn{display:flex;justify-content:space-between;margin-top:18px}.pn button{all:unset;cursor:pointer;font-size:15px;color:var(--tint);padding:6px 0;min-height:36px}
+.cmp-pick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+.cmp-pick select{font:600 15px var(--sf);padding:8px 10px;border-radius:9px;border:0;background:var(--fill);color:var(--ink);width:100%;min-width:0;min-height:40px}
+.cm2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}.cm2 svg{width:100%;max-width:120px;height:auto;display:block;margin:0 auto}
+.ct{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.ct th{font-weight:400;color:var(--muted);text-align:left;padding:8px 0;border-bottom:.5px solid var(--rule);font-size:13px}
+.ct td{text-align:right;padding:8px 0 8px 8px;border-bottom:.5px solid var(--rule);font-weight:600;width:32%}
+.ct tr.h td{font-size:17px}.ct tr:last-child th,.ct tr:last-child td{border-bottom:0}.ct td.up{color:var(--fp-up)}.ct td.m{color:var(--muted);font-weight:400}
+.ct tr.sep th{padding-top:16px;font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.lnk{all:unset;cursor:pointer;color:var(--tint)}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>

@@ -183,7 +183,7 @@ async function collection() {
   let rows;
   try { rows = FP.rows = FP.rows || await loadCollection(); }
   catch (e) { $("view").innerHTML = head() + `<h1>Collection</h1><p class="sub">Couldn't load your cards. Try again in a moment.</p>`; return; }
-  rows.sort((a, b) => (b.market_chf || 0) - (a.market_chf || 0));
+  rows.sort((a, b) => FP.csort === "market" ? (b.market_chf || 0) - (a.market_chf || 0) : String(a.added_at || "").localeCompare(String(b.added_at || "")));
   const n = rows.reduce((s, r) => s + (r.qty || 1), 0), tot = rows.reduce((s, r) => s + (r.market_chf || 0) * (r.qty || 1), 0);
   if (!rows.length) {
     $("view").innerHTML = head() + `<h1>Collection</h1><p class="sub">0 cards</p><div class="box empty">
@@ -201,7 +201,8 @@ async function collection() {
       <span class="cm"><b>${esc(r.name)}${r.qty > 1 ? ` <span style="color:var(--muted);font-weight:500">×${r.qty}</span>` : ""}</b>
         <span>${esc(r.set_name || r.set_id)} · ${LOOK[r.look] || esc(r.look)} · ${esc(r.num)}</span>${rowValue(r)}</span>
       <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`).join("")}</div>
-    <p class="foot">TCGplayer market price · fair price from HoloTrack's model (weekly refit). Each fingerprint: one turn per month since March 2024, orange where the market sat above the fair price.</p>`;
+    <p class="foot">Small fingerprints breathe at each card's own trading pace, half as deep as on the card.</p>
+    <p class="foot">${FP.csort === "market" ? `<button class="lnk" data-cs="added">Order: as added</button>` : `<button class="lnk" data-cs="market">Sort by market price</button>`} · TCGplayer market price · fair price from HoloTrack's model (weekly refit).</p>`;
   breathers.length = 0;
   document.querySelectorAll(".crow").forEach(b => {
     const r = rows.find(x => x.card_id === b.dataset.id), els = [...b.querySelectorAll("path.nw")];
@@ -210,7 +211,8 @@ async function collection() {
   });
   cgroupBind();
 }
-function cgroupBind() { document.querySelectorAll("[data-cg]").forEach(b => b.onclick = () => { FP.cgroup = b.dataset.cg; collection(); }); }
+function cgroupBind() { document.querySelectorAll("[data-cg]").forEach(b => b.onclick = () => { FP.cgroup = b.dataset.cg; collection(); });
+  document.querySelectorAll("[data-cs]").forEach(b => b.onclick = () => { FP.csort = b.dataset.cs; collection(); }); }
 async function collectionBySet(rows, n, tot, grp) {           // (26 Nov, Set screen) Collection → group by set → set row
   let L = []; try { L = await loadSets(); } catch (e) { }
   if (FP.tab !== "collection") return;
@@ -271,7 +273,7 @@ function headerBox(h) {
   return `<div class="box"><div class="hd"><div class="mk"><small>Market</small><b>${chf(h.market_chf)}</b></div>
     <div class="fr"><small>Fair price</small>${h.held ? `<b style="font-size:15px;color:var(--muted)">Fair price under review</b>` : `<b>${chf(h.fair_chf)}</b>${g ? `<em class="${g.cls}">${g.txt}</em>` : ""}`}</div></div>
     ${h.held ? "" : bar(h)}
-    <div class="facts">${h.sales_4w != null ? `<span><b>${h.sales_4w}</b> sales in 4 weeks</span>` : ""}${h.character && h.character_cards ? `<span><b>${h.character_cards}</b> ${esc(h.character)} cards</span>` : ""}</div>
+    <div class="facts">${h.sales_4w != null ? `<span><b>${h.sales_4w}</b> sales in 4 weeks</span>` : ""}${h.character && h.character_cards ? `<a class="setl" href="#char/${encodeURIComponent(h.character)}"><b>${h.character_cards}</b> ${esc(h.character)} cards</a>` : h.character ? `<a class="setl" href="#char/${encodeURIComponent(h.character)}">${esc(h.character)} cards</a>` : ""}</div>
     <p class="src">TCGplayer market price, ${esc(h.day)} · fair price: HoloTrack's model, weekly refit</p></div>`;
 }
 function plist(C, T) {                                  // (27 Nov) groups follow the flow's statuses, as the prototype's list
@@ -283,7 +285,7 @@ function plist(C, T) {                                  // (27 Nov) groups follo
     if (h.segment !== "low" && p && (COUNTED(t.status) || st === "counted")) { const r = Math.exp(p.contribution); counted.push([t, p.no_effect ? "×1 · adds nothing" : xm(r), p.no_effect ? "m" : r > 1 ? "up" : "m", p.no_effect ? -1 : Math.abs(p.contribution)]); }
     else if (st === "beh") beside.push([t, besideText(t.n, bes[t.n], h), ""]);
     else if (st === "event") events.push([t, "dots on the fingerprint", "m"]);
-    else if (t.status === "baseline") notyet.push([t, "sets the comparison", "m"]);
+    else if (t.status === "baseline") continue;            // lab ruling 2: sets the comparison group — shown on Why's first line, not as a row
     else if (COUNTED(t.status)) notyet.push([t, h.segment === "low" ? "not counted for low-tier cards" : `not counted for ${h.segment} cards`, "m"]);
     else if (t.status === "behaviour") notyet.push([t, "not in the app yet", "m"]);
     else notyet.push([t, t.status === "copy" ? "your copy" : t.status === "empty" || st === "none" ? "empty" : "observed", "m"]);
@@ -299,24 +301,24 @@ function sheet(n) {
   const C = FP.card, T = FP.texts, t = T.find(x => x.n === n); if (!t) return;
   const h = C.h, p = C.parts.find(x => x.n === n), st = COUNTED(t.status) ? "counted" : t.status;
   let on;
-  if (st === "counted" && p && h.segment !== "low") on = p.no_effect ? `<p>Counted, but ${esc(h.name)} equals the typical card here, so it adds nothing (×1).</p>`
-    : `<b class="big ${p.contribution > 0 ? "up" : ""}">${xm(Math.exp(p.contribution))}</b><p>${esc(p.raw || t.name)} · measured against the ${esc(h.typical_label || "typical card")}${h.typical_base_chf ? ` (${chf(h.typical_base_chf)})` : ""}</p>`;
-  else if (st === "counted") on = `<p>Not counted for ${esc(h.segment)} cards.</p>`;
-  else if (st === "baseline") on = `<p>Sets the comparison: ${esc(h.name)} is measured against the ${esc(h.typical_label || "typical card")}${h.typical_base_chf ? ` (${chf(h.typical_base_chf)})` : ""}, and every counted parameter starts from there.</p>`;
-  else if (st === "behaviour") { const v = besideText(n, C.beside.find(b => b.n === n), h); on = `<p>${v ? esc(v) : "Not in the app yet."}</p>`; }
-  else if (st === "event") on = `<p>Shown as dots on the fingerprint (History).</p>`;
-  else if (st === "empty") on = `<p>Empty because ${esc(t.empty_reason || "no data source exists yet")}.</p>`;
-  else if (st === "copy") on = `<p>Only for a copy you own: add condition or grade to your copy to see it.</p>`;
-  else on = `<p>Collected for every card; not yet part of the fair price.</p>`;
+  if (st === "counted" && p && h.segment !== "low") on = p.no_effect ? `Counted, but ${esc(h.name)} equals the typical card here, so it adds nothing (×1).`
+    : `<b class="${p.contribution > 0 ? "up" : ""}">${xm(Math.exp(p.contribution))}</b>${esc(stepLabel(C, p) || t.name)} · measured against the ${esc(h.typical_label || "typical card")}${h.typical_base_chf ? ` (${chf0(h.typical_base_chf)})` : ""}.`;
+  else if (st === "counted") on = h.segment === "low" ? `Low-tier cards have no fair price yet, so nothing is measured against a typical card. The header shows similar cards in the same set as context.` : `Not counted for ${esc(h.segment)} cards.`;
+  else if (st === "baseline") on = h.segment === "low" ? `Low-tier cards have no fair price yet, so nothing is measured against a typical card. The header shows similar cards in the same set as context.`
+    : `Sets the comparison: ${esc(h.name)} is measured against the ${esc(h.typical_label || "typical card")}${h.typical_base_chf ? ` (${chf0(h.typical_base_chf)})` : ""}, and every counted parameter starts from there.`;
+  else if (st === "behaviour") { const v = besideText(n, C.beside.find(b => b.n === n), h); on = v ? `<b>${esc(v)}</b>` : "Shown beside the price once its data reaches the app."; }
+  else if (st === "event") on = "Shows as dots on the fingerprint. The events test (about 3 Dec) decides which kinds of event count.";
+  else if (st === "empty") on = `Empty because ${esc(t.empty_reason || "no data yet")}.`;
+  else if (st === "copy") on = "Only for a copy you own: add condition or grade to your copy to see it.";
+  else on = "Collected for every card; not yet part of the fair price.";
   if (C.setSheet) on = C.setSheet;                       // (26 Nov, Set screen) P79 read for the whole set
   const i = FP.order.indexOf(n), prev = FP.order[i - 1], next = FP.order[i + 1];
-  $("sheet").innerHTML = `<div class="grab"></div><div class="shd"><span class="label">P${n} · ${esc((t.family || "").toUpperCase())}</span><button id="sdone">Done</button></div>
-    <h2 id="s-name">${esc(t.name)}</h2><span class="chip ${st === "counted" ? "ink" : ""}">${CHIP[st] || esc(st)}</span>
-    <div class="on"><div class="label">On this card</div>${on}</div>
-    ${t.what ? `<h3>What it is</h3><p>${esc(t.what)}</p>` : ""}${t.how ? `<h3>How it's measured</h3><p>${esc(t.how)}</p>` : ""}
-    ${t.low_note ? `<h3>Low</h3><p>${esc(t.low_note)}</p>` : ""}${t.high_note ? `<h3>High</h3><p>${esc(t.high_note)}</p>` : ""}
+  $("sheet").innerHTML = `<div class="grab"></div><div class="sh-top"><span>P${n} · ${esc((t.family || "").toUpperCase())}</span><button id="sdone">Done</button></div>
+    <h3 id="s-name">${esc(t.name)}</h3><span class="chip ${st === "counted" ? "counted" : ""}">${CHIP[st] || esc(st)}</span>
+    <div class="oncard">${on}</div>
+    <dl>${t.what ? `<dt>What it is</dt><dd>${esc(t.what)}</dd>` : ""}${t.how ? `<dt>How it's measured</dt><dd>${esc(t.how)}</dd>` : ""}${t.low_note ? `<dt>Low</dt><dd>${esc(t.low_note)}</dd>` : ""}${t.high_note ? `<dt>High</dt><dd>${esc(t.high_note)}</dd>` : ""}</dl>
     ${C.nick ? `<p class="sfoot">“${esc(C.nick.nickname)}” — the name collectors use for this printing. Source: <a href="${esc(C.nick.source_url)}" target="_blank" rel="noopener">${esc(C.nick.source_name)}</a></p>` : ""}
-    <div class="snav">${prev != null ? `<button data-go="${prev}">‹ Previous</button>` : "<span></span>"}${next != null ? `<button data-go="${next}">Next ›</button>` : ""}</div>`;
+    <div class="pn">${prev != null ? `<button data-go="${prev}">‹ Previous</button>` : "<span></span>"}${next != null ? `<button data-go="${next}">Next ›</button>` : ""}</div>`;
   $("sheet").classList.add("on"); $("scrim").classList.add("on"); $("sheet").scrollTop = 0; flowHighlight(n);
   $("sdone").onclick = closeSheet; $("sheet").querySelectorAll("[data-go]").forEach(b => b.onclick = () => sheet(+b.dataset.go));
 }
@@ -560,42 +562,46 @@ function swayFrame(ms) {
 requestAnimationFrame(swayFrame);
 /* ---------- card → Why (spec §3.2): one sentence and a step chart on one log scale ---------- */
 const NAMEL = { 1: "character", 3: "scarcity", 7: "kind", 9: "artist", 10: "card look", 79: "set premium" };
-function whyPane(C) {
+const RARW = { "special illustration": "Special illustration rare", illustration: "Illustration rare", "alt art": "Alt art", "full art": "Full art", plain: "Plain", gallery: "Gallery" };
+const chf0 = v => "CHF " + Math.round(v).toLocaleString("en-US");
+function stepLabel(C, p) {                               // the fixture's labels: "Umbreon", "alt art", "USD 31,008 to pull"
   const h = C.h;
-  if (h.held) return `<div class="box"><p class="why">Fair price under review — the steps come back once the guard clears.</p></div>`;
-  const steps = C.parts.filter(p => !p.no_effect).sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
+  if (p.n === 1) return h.character || "";
+  if (p.n === 10) return (LOOK[h.look] || h.look || "").toLowerCase();
+  if (p.n === 3 && p.raw) { const m = String(p.raw).match(/([\d.]+)\s*USD/); return m ? `USD ${Math.round(+m[1]).toLocaleString("en-US")} to pull` : p.raw; }
+  return p.raw || "";
+}
+function whyPane(C) {                                    // (27 Nov) the prototype's why(): one line per step with the running price
+  const h = C.h, T = FP.texts || [];
+  if (h.held) return `<div class="box why"><p class="lead">Fair price under review — the steps come back once the guard clears.</p></div>`;
   const base = h.typical_base_chf, fair = h.fair_chf, m = h.market_chf;
-  if (!base || !fair) return `<div class="box"><p class="why">No fair price for this card yet.</p></div>`;
-  const prod = prodOf(h), names = steps.map(p => NAMEL[p.n] || p.name.toLowerCase());
-  const list = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names.at(-1) : names[0] || "Nothing";
-  let s2;
-  if (m > h.band50_hi) s2 = `The market pays ${xm(m / fair)} more: priced by something the model doesn't count yet.`;
-  else if (m < h.band50_lo) s2 = `The market pays less (${xm(m / fair)} of it): priced by something the model doesn't count yet.`;
-  else s2 = `The market, ${chf(m)}, sits inside the middle half of similar cards.`;
-  const s1 = `Start from the ${esc(h.typical_label || "typical card")} at ${chf(base)}. ${list.charAt(0).toUpperCase() + list.slice(1)} take${names.length === 1 ? "s" : ""} it ${xm(prod)} to a fair price of ${chf(fair)}.`;
-  // step chart
-  const W = 340, RH = 44, L = 8, Rt = W - 70, rows = [];
-  let run = base;
-  rows.push({ label: h.typical_label ? "Typical card" : "Typical", from: base, to: base, dot: true, txt: chf(base) });
-  for (const p of steps) { const to = run * Math.exp(p.contribution); rows.push({ label: p.name, from: run, to, up: p.contribution > 0, txt: xm(Math.exp(p.contribution)), run: chf(to) }); run = to; }
-  rows.push({ label: "Fair price", from: fair, to: fair, fair: true, txt: chf(fair) });
-  rows.push({ label: "Market", from: fair, to: m, mkt: true, up: m > fair, txt: chf(m) });
-  const vals = rows.flatMap(r => [r.from, r.to]).concat([h.band50_lo, h.band50_hi]).filter(v => v > 0);
-  const lo = Math.log(Math.min(...vals)) - .15, hi = Math.log(Math.max(...vals)) + .15, X = v => L + (Rt - L) * (Math.log(v) - lo) / (hi - lo);
-  const H = rows.length * RH + 8;
-  const svg = rows.map((r, i) => {
-    const y = 8 + i * RH, by = y + 24;
-    let g = `<text class="wl" x="${L}" y="${y + 12}">${esc(r.label)}</text><text class="wv ${r.up && !r.mkt ? "up" : ""}" x="${W}" y="${y + 12}" text-anchor="end">${esc(r.txt)}</text>`;
-    if (r.run) g += `<text class="wr" x="${W}" y="${by + 4}" text-anchor="end">${esc(r.run)}</text>`;
-    if (r.dot) g += `<circle cx="${X(r.from)}" cy="${by}" r="4" class="wdot"/>`;
-    else if (r.fair) g += `<rect x="${X(h.band50_lo)}" y="${by - 5}" width="${X(h.band50_hi) - X(h.band50_lo)}" height="10" rx="5" class="wband"/><line x1="${X(fair)}" x2="${X(fair)}" y1="${by - 8}" y2="${by + 8}" class="wtick"/>`;
-    else { const a = Math.min(X(r.from), X(r.to)), b = Math.max(X(r.from), X(r.to));
-      g += `<rect x="${a}" y="${by - 4}" width="${Math.max(2, b - a)}" height="8" rx="4" class="${r.mkt ? (r.up ? "wmkt up" : "wmkt") : r.up ? "wup" : "wdn"}"/>`; }
-    return g;
-  }).join("");
-  return `<div class="box"><p class="why">${s1}</p><p class="why m">${s2}</p>
-    <svg class="wchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Steps from the typical card to the fair price and the market, one log scale">${svg}</svg>
-    <p class="note">One scale for every row (each step is a multiple). Grey band on the fair-price row: half of similar cards (${chf(h.band50_lo)}–${chf(h.band50_hi)}).</p></div>`;
+  if (!base || !fair) return `<div class="box why"><p class="lead">No fair price for this card yet.</p></div>`;
+  const steps = C.parts.filter(p => !p.no_effect).map(p => ({ n: p.n, m: Math.exp(p.contribution), label: stepLabel(C, p), name: (T.find(t => t.n === p.n) || {}).name || p.name }))
+    .sort((a, b) => Math.abs(Math.log(b.m)) - Math.abs(Math.log(a.m)));
+  const vals = [base]; steps.forEach(st => vals.push(vals.at(-1) * st.m));
+  const W = 340, pad = 4, RH = 46, lo = Math.min(...vals, h.band50_lo, m) / 1.4, hi = Math.max(...vals, h.band50_hi, m) * 1.4;
+  const X = v => pad + (Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) * (W - 2 * pad);
+  const txt = (x, y, t, anc, st) => `<text x="${x}" y="${y}" text-anchor="${anc}" style="font:${st || "400 13px var(--sf)"};fill:var(--ink)">${t}</text>`;
+  const BL = h.typical_label || "typical card", rows = []; let y = 0;
+  rows.push(txt(pad, y + 16, esc(BL.replace(/^./, c => c.toUpperCase())), "start", "400 13px var(--sf);fill:var(--muted)") + txt(W, y + 16, chf0(base), "end", "600 13px var(--sf)") + `<circle cx="${X(base)}" cy="${y + 30}" r="5" style="fill:var(--ink)"/>`); y += RH;
+  steps.forEach((st, i) => { const a = vals[i], b = vals[i + 1], x0 = Math.min(X(a), X(b)), x1 = Math.max(X(a), X(b));
+    rows.push(`<line x1="${X(a)}" x2="${X(a)}" y1="${y - 12}" y2="${y + 30}" style="stroke:var(--rule);stroke-dasharray:2 3"/>` +
+      txt(pad, y + 16, `<tspan style="font-weight:700;fill:${st.m > 1 ? "var(--fp-up)" : "var(--muted)"}">${xm(st.m)}</tspan> ${esc(st.name)}${st.label ? " · " + esc(st.label) : ""}`, "start") + txt(W, y + 16, chf0(b), "end", "600 13px var(--sf)") +
+      `<rect x="${x0}" y="${y + 25}" width="${Math.max(2, x1 - x0)}" height="10" rx="3" style="fill:${st.m > 1 ? "var(--fp-3)" : "var(--gr-2)"}"/>`); y += RH; });
+  const f = vals.at(-1);
+  rows.push(`<line x1="${pad}" x2="${W}" y1="${y - 4}" y2="${y - 4}" style="stroke:var(--rule)"/>` + txt(pad, y + 16, "Fair price", "start", "700 15px var(--sf)") + txt(W, y + 16, chf0(fair), "end", "700 15px var(--sf)") +
+    `<rect x="${X(h.band50_lo)}" y="${y + 26}" width="${X(h.band50_hi) - X(h.band50_lo)}" height="8" rx="4" style="fill:var(--gr-1)"/><line x1="${X(f)}" x2="${X(f)}" y1="${y + 22}" y2="${y + 38}" style="stroke:var(--ink);stroke-width:2"/>`); y += RH;
+  const up = m > fair, g = gap(h.l) || { txt: xm(m / fair) };
+  rows.push(txt(pad, y + 16, `Market · <tspan style="font-weight:700;fill:${up ? "var(--fp-up)" : "var(--muted)"}">${g.txt}</tspan> ${up ? "above" : "below"} fair`, "start") + txt(W, y + 16, chf0(m), "end", "600 13px var(--sf)") +
+    `<rect x="${Math.min(X(f), X(m))}" y="${y + 25}" width="${Math.abs(X(m) - X(f))}" height="10" rx="3" style="fill:${up ? "var(--fp-1)" : "var(--gr-1)"}"/><circle cx="${X(m)}" cy="${y + 30}" r="5" style="fill:${up ? "var(--fp-3)" : "var(--muted)"}"/>`); y += RH;
+  const names = steps.filter(st => Math.abs(Math.log(st.m)) > 1e-6).map(st => st.n === 3 ? "scarcity" : st.n === 9 ? (st.label ? st.label + " (artist)" : "the artist") : st.n === 10 ? st.label : st.n === 1 ? st.label || "the character" : NAMEL[st.n] || st.name.toLowerCase());
+  let L = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names.at(-1) : names[0] || "Nothing"; L = L.charAt(0).toUpperCase() + L.slice(1);
+  const inside = m >= h.band50_lo && m <= h.band50_hi;
+  const cmpw = `Compared with: ${esc(h.segment === "chase" ? "chase cards" : h.segment === "mid" ? "mid-tier cards" : (h.segment || "") + " cards")}${h.era ? " · " + esc(h.era) : ""}`;   // Rarity tier + Set and era (lab ruling 2)
+  return `<div class="box why"><p class="cmpw">${cmpw}</p><p class="lead">Start from the ${esc(BL)} at ${chf0(base)}. ${esc(L)} take${names.length === 1 ? "s" : ""} it ${xm(fair / base)} to a fair price of ${chf0(fair)}. ` +
+    (inside ? `The market, ${chf0(m)}, sits inside the middle half of similar cards.` : `The market pays ${g.txt} ${up ? "more" : "less"}: priced by something the model doesn't count yet.`) + `</p>` +
+    `<svg class="wchart" viewBox="0 -4 ${W + 2} ${y + 4}" role="img" aria-label="Fair price built step by step from the typical card, then the market">${rows.join("")}</svg>` +
+    `<p class="note">One scale for every row (each step is a multiple). Grey band on the fair-price row: half of similar cards (CHF ${Math.round(h.band50_lo).toLocaleString("en-US")}–${Math.round(h.band50_hi).toLocaleString("en-US")}).</p></div>`;
 }
 
 /* ---------- card → History (spec §3.3): the fingerprint with a scrubber and event dots ---------- */
@@ -667,15 +673,15 @@ function histWire() {
 }
 async function card(id) {
   FP.tab = "collection";
-  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div><h1>…</h1>`;
+  $("view").innerHTML = `<div class="top"><button id="back" class="bk"><svg viewBox="0 0 11 19" aria-hidden="true"><path d="M9.5 1.5 2 9.5l7.5 8"/></svg>Back</button><span class="private">PRIVATE</span></div><h1>…</h1>`;
   $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "collection"); };
   let C, T;
   try { [C, T] = await Promise.all([loadCard(id), texts()]); } catch (e) { C = null; }
   if (!C) { $("view").innerHTML += `<p class="sub">This card has no figures in the model yet.</p>`; return; }
   await loadHist(C).catch(() => {});                       // (27 Nov) the flow needs the weekly line and the card's events (as flow3.py)
   FP.card = C; const h = C.h;
-  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
-    <h1 class="cardt">${esc(h.name)}</h1>${C.nick ? `<p class="nick">Known to collectors as ${esc(C.nick.nickname)}</p>` : ""}<p class="sub">${h.character ? `<a class="setl" href="#char/${encodeURIComponent(h.character)}">${esc(h.character)}</a> · ` : ""}<a class="setl" href="#set/${encodeURIComponent(h.set_id)}">${esc(h.set_name || h.set_id)}</a> · ${LOOK[h.look] || esc(h.look)} · ${esc(h.num)}</p>
+  $("view").innerHTML = `<div class="top"><button id="back" class="bk"><svg viewBox="0 0 11 19" aria-hidden="true"><path d="M9.5 1.5 2 9.5l7.5 8"/></svg>Back</button><span class="private">PRIVATE</span></div>
+    <h1 class="cardt">${esc(h.name)}</h1><p class="sub csub"><a class="setl" href="#set/${encodeURIComponent(h.set_id)}">${esc(h.set_name || h.set_id)}</a> · ${esc(RARW[h.look] || LOOK[h.look] || h.look)} · ${esc(h.num)}${h.official_count && /^\d+$/.test(h.num) ? "/" + h.official_count : ""}</p>${C.nick ? `<p class="nick">Known to collectors as <b>${esc(C.nick.nickname)}</b></p>` : ""}
     <div class="segc" role="tablist"><button role="tab" data-p="today" aria-selected="true">Today</button>${h.segment === "low" ? "" : `<button role="tab" data-p="why" aria-selected="false">Why</button>`}<button role="tab" data-p="hist" aria-selected="false">History</button></div>
     <div id="p-today">${headerBox(h)}<div class="box flowbox">${flowSvg(C, T)}<p class="hint">Tap a string or a name, or pick from the list below</p></div>
     ${plist(C, T)}</div><div id="p-why" hidden>${h.segment === "low" ? "" : whyPane(C)}</div><div id="p-hist" hidden></div>`;
@@ -706,9 +712,9 @@ async function compare() {
   if (opts.length < 2) { $("view").innerHTML = head() + `<h1>Compare</h1><p class="sub">Add two cards to your collection to compare them.</p>`; return; }
   const byMkt = [...rows].sort((a, b) => (b.market_chf || 0) - (a.market_chf || 0));
   FP.cmp = FP.cmp || [byMkt[0].card_id, byMkt[1].card_id];
-  const sel = i => `<select id="cmp${i}" aria-label="Card ${i + 1}">${opts.map(r => `<option value="${esc(r.card_id)}" ${FP.cmp[i] === r.card_id ? "selected" : ""}>${esc(r.name)} · ${esc(r.set_name || r.set_id)} · ${esc(r.num)}</option>`).join("")}</select>`;
-  $("view").innerHTML = head() + `<h1>Compare</h1><p class="sub">Two cards side by side.</p>
-    <div class="box cmpsel">${sel(0)}${sel(1)}</div><div id="cmpt"><div class="box"><p class="why m">Loading…</p></div></div>`;
+  const sel = i => `<select id="cmp${i}" aria-label="Card ${i + 1}">${opts.map(r => `<option value="${esc(r.card_id)}" ${FP.cmp[i] === r.card_id ? "selected" : ""}>${esc(r.name)}${opts.filter(o => o.name === r.name).length > 1 ? ` · ${esc(r.set_name || r.set_id)} · ${esc(r.num)}` : ""}</option>`).join("")}</select>`;
+  $("view").innerHTML = head() + `<h1>Compare</h1><p class="sub">Two cards, same scale</p>
+    <div class="cmp-pick">${sel(0)}${sel(1)}</div><div id="cmpt"><div class="box"><p class="why m">Loading…</p></div></div>`;
   [0, 1].forEach(i => $("cmp" + i).onchange = e => { FP.cmp[i] = e.target.value; cmpTable(); });
   cmpTable();
 }
@@ -716,25 +722,22 @@ async function cmpTable() {
   const ids = FP.cmp; let A, B, T;
   try { [A, B, T] = await Promise.all([loadCard(ids[0]), loadCard(ids[1]), texts()]); await loadWeekly(ids); } catch (e) { }
   if (FP.tab !== "compare") return;
-  const cs = [A, B];
-  const cell = (C, f) => !C ? "—" : f(C);
-  const lowRow = (C, f) => C.h.segment === "low" ? "—" : f(C);
-  const head2 = cs.map((C, i) => `<div class="cmph"><span class="mini">${miniOf(ids[i], C ? C.h.name : ids[i])}</span><b>${esc(C ? C.h.name : ids[i])}</b><span>${C ? `${esc(C.h.set_name || C.h.set_id)} · ${LOOK[C.h.look] || esc(C.h.look)} · ${esc(C.h.num)}` : "not in the model"}</span></div>`).join("");
-  const rows = [
-    ["Market", C => chf(C.h.market_chf)],
-    ["Fair price", C => C.h.segment === "low" ? (C.h.context_median_chf && C.h.context_n >= 5 ? `similar ${chf(C.h.context_median_chf)}` : "—") : C.h.held ? "under review" : chf(C.h.fair_chf)],
-    ["Market vs fair", C => lowRow(C, C => { const g = gap(C.h.l); return g ? `<span class="${g.cls === "up" ? "upc" : "dnc"}">${g.txt}</span>` : "—"; })],
-    ["Middle half", C => lowRow(C, C => C.h.band50_lo ? `${Math.round(C.h.band50_lo).toLocaleString("en-US")}–${Math.round(C.h.band50_hi).toLocaleString("en-US")}` : "—")],
-    ["Typical card", C => lowRow(C, C => C.h.typical_base_chf ? chf(C.h.typical_base_chf) : "—")],
-  ];
-  const pn = [...new Set(cs.flatMap(C => C && C.h.segment !== "low" ? C.parts.map(p => p.n) : []))].sort((a, b) => a - b);
-  for (const n of pn) {
-    const t = (T || []).find(x => x.n === n);
-    rows.push([t ? t.name : "P" + n, C => lowRow(C, C => { const p = C.parts.find(x => x.n === n); if (!p) return "not counted"; if (p.no_effect) return "×1"; const r = Math.exp(p.contribution); return `<span class="${r > 1 ? "upc" : ""}">${xm(r)}</span>`; })]);
-  }
-  rows.push(["Sales", C => C.h.sales_4w != null ? `${C.h.sales_4w} in 4 weeks` : "—"]);
-  rows.push(["Breathes every", C => `${period(C.h.sales_4w).toFixed(1)} s`]);
-  $("cmpt").innerHTML = `<div class="box cmpgrid">${head2}</div><div class="box ctable">${rows.map(([l, f]) => `<div class="cr"><span>${esc(l)}</span><span>${cell(cs[0], f)}</span><span>${cell(cs[1], f)}</span></div>`).join("")}</div>`;
+  const cs = [A, B], low = C => C.h.segment === "low", m = '<td class="m">—</td>';
+  const mini = (i, C) => `<div>${miniOf(ids[i], C ? C.h.name : ids[i])}</div>`;
+  const fp = C => low(C) ? `<td class="m">${C.h.context_median_chf ? "similar " + chf(C.h.context_median_chf) : "—"}</td>` : C.h.held ? `<td class="m">under review</td>` : `<td>${chf0(C.h.fair_chf)}</td>`;
+  const gv = C => { if (low(C) || C.h.held) return m; const g = gap(C.h.l); return g ? `<td class="${g.cls === "up" ? "up" : "m"}">${g.txt}</td>` : m; };
+  const mh = C => low(C) || !C.h.band50_lo ? m : `<td class="m">${Math.round(C.h.band50_lo).toLocaleString("en-US")}–${Math.round(C.h.band50_hi).toLocaleString("en-US")}</td>`;
+  const tc = C => low(C) || !C.h.typical_base_chf ? m : `<td class="m">${chf0(C.h.typical_base_chf)}</td>`;
+  const ns = [...new Set(cs.flatMap(C => C && !low(C) ? C.parts.map(p => p.n) : []))].sort((a, b) => a - b);
+  const cv = (C, n) => { if (low(C)) return '<td class="m">no fair price</td>'; const p = C.parts.find(x => x.n === n); if (!p) return '<td class="m">not counted</td>'; if (p.no_effect) return '<td class="m">×1</td>'; const r = Math.exp(p.contribution); return `<td class="${r > 1 ? "up" : "m"}">${xm(r)}</td>`; };
+  const mk = C => `<td>${low(C) ? chf(C.h.market_chf) : chf0(C.h.market_chf)}</td>`, sales = C => `<td class="m">${C.h.sales_4w != null ? `${C.h.sales_4w} sales in 4 weeks` : "—"}</td>`;
+  if (!A || !B) { $("cmpt").innerHTML = `<div class="box"><p class="why m">One of these cards has no figures in the app yet.</p></div>`; return; }
+  $("cmpt").innerHTML = `<div class="box"><div class="cm2">${mini(0, A)}${mini(1, B)}</div><table class="ct">
+    <tr class="h"><th></th><td>${esc(A.h.name)}</td><td>${esc(B.h.name)}</td></tr>
+    <tr><th>Market</th>${mk(A)}${mk(B)}</tr><tr><th>Fair price</th>${fp(A)}${fp(B)}</tr><tr><th>Market vs fair</th>${gv(A)}${gv(B)}</tr>
+    <tr><th>Middle half</th>${mh(A)}${mh(B)}</tr><tr><th>Typical card</th>${tc(A)}${tc(B)}</tr>
+    <tr class="sep"><th colspan="3">Counted</th></tr>${ns.map(n => `<tr><th>${esc(((T || []).find(x => x.n === n) || {}).name || "P" + n)}</th>${cv(A, n)}${cv(B, n)}</tr>`).join("")}
+    <tr class="sep"><th colspan="3">Trading</th></tr><tr><th>Sales</th>${sales(A)}${sales(B)}</tr><tr><th>Breathes every</th><td class="m">${period(A.h.sales_4w).toFixed(0)} s</td><td class="m">${period(B.h.sales_4w).toFixed(0)} s</td></tr></table></div>`;
 }
 
 /* ---------- Movers (Build brief 23 Nov) ---------- */
@@ -898,7 +901,7 @@ function setReadout(S, wk) {
   return `<b>Week ${wk}</b>${c != null ? ` · median chase card <b class="${t != null && c > t ? "upc" : ""}">${c.toFixed(2)}</b>` : ""}${m != null ? ` · median mid card ${m.toFixed(2)}` : ""}${t != null ? ` · typical set ${t.toFixed(2)}` : ""}`;
 }
 async function setScreen(id) {
-  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div><p class="sub">Loading…</p>`;
+  $("view").innerHTML = `<div class="top"><button id="back" class="bk"><svg viewBox="0 0 11 19" aria-hidden="true"><path d="M9.5 1.5 2 9.5l7.5 8"/></svg>Back</button><span class="private">PRIVATE</span></div><p class="sub">Loading…</p>`;
   $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "sets"); };
   let S; try { S = await loadSet(id); } catch (e) { S = null; }
   if (!S) { $("view").innerHTML += `<p class="sub">This set has no cards in the model yet.</p>`; return; }
@@ -917,7 +920,7 @@ async function setScreen(id) {
       <p class="hint">Each card is indexed to its own weeks 1–5 (= 1.00). Orange where the set's chase cards sit above the typical set.</p></div>`)
     : `<div class="box"><div class="label">The set's line</div><p class="why m">Released ${fmtDay(rel)}, before our weekly history begins (Feb 2024): there are no launch weeks to compare with the typical set.</p></div>`;
   FP.setSort = FP.setSort || "price";
-  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
+  $("view").innerHTML = `<div class="top"><button id="back" class="bk"><svg viewBox="0 0 11 19" aria-hidden="true"><path d="M9.5 1.5 2 9.5l7.5 8"/></svg>Back</button><span class="private">PRIVATE</span></div>
     <h1 class="cardt">${esc(h.name)}</h1><p class="sub">${esc(SERIE[h.serie] || h.serie || "")} · released ${fmtDay(rel)} · ${h.n_cards} card${h.n_cards === 1 ? "" : "s"} in the app</p>
     <div class="box"><div class="shd2">${phaseChip(h)}<button class="spb" id="spb">${spText(h)}</button></div>
       ${waves ? `<ul class="waves">${waves}</ul>` : ""}${h.phase_confidence === "low" ? `<p class="hint">Phase dates are low confidence (estimated from the release date).</p>` : ""}
@@ -982,7 +985,7 @@ async function chars() {
   $("chq").oninput = e => draw(e.target.value); draw("");
 }
 async function charScreen(name) {
-  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div><p class="sub">Loading…</p>`;
+  $("view").innerHTML = `<div class="top"><button id="back" class="bk"><svg viewBox="0 0 11 19" aria-hidden="true"><path d="M9.5 1.5 2 9.5l7.5 8"/></svg>Back</button><span class="private">PRIVATE</span></div><p class="sub">Loading…</p>`;
   $("back").onclick = () => { history.length > 1 ? history.back() : (location.hash = "chars"); };
   let S; try { S = await loadChar(name); } catch (e) { S = null; }
   if (!S) { $("view").innerHTML += `<p class="sub">This character has no cards in the model yet.</p>`; return; }
@@ -998,7 +1001,7 @@ async function charScreen(name) {
     : `<div class="box"><div class="label">Since Feb 2024</div><p class="why m">No weekly line yet for this character's chase or mid-tier cards.</p></div>`;
   const evl = (S.ev || []).slice().reverse().slice(0, 6).map(e => `<li>${esc(e.label)} · ${fmtDay(e.day)}<br><span class="m">${esc(e.tested)}</span></li>`).join("");
   FP.charSort = FP.charSort || "price";
-  $("view").innerHTML = `<div class="top"><button id="back">‹ Back</button><span class="private">PRIVATE</span></div>
+  $("view").innerHTML = `<div class="top"><button id="back" class="bk"><svg viewBox="0 0 11 19" aria-hidden="true"><path d="M9.5 1.5 2 9.5l7.5 8"/></svg>Back</button><span class="private">PRIVATE</span></div>
     <h1 class="cardt">${esc(h.character)}</h1><p class="sub">${h.role === "trainer" ? "Trainer" : `${h.dex ? "#" + h.dex : ""}${h.generation ? " · Gen " + h.generation : ""}`} · ${h.n_cards} card${h.n_cards === 1 ? "" : "s"} in the app</p>
     <div class="box"><div class="shd2">${catChip(h)}<button class="spb" id="cdb">${demTxt(h)}</button></div>
       <p class="hint">${new Date() < new Date(SP_PRIOR_ON) ? `Species prior switches on ${fmtDay(SP_PRIOR_ON)}.` : "Species prior: see the sheet."}${thin ? " Few cards yet: leans on the species prior." : ""}</p></div>
