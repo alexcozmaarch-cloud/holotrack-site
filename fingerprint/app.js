@@ -1153,25 +1153,31 @@ async function thisWeek(week) {
   if (!D || !D.week) { $("view").innerHTML = head() + `<h1>This week</h1><div class="box empty"><p>The first weekly page is built after the next Monday refit.</p></div>`; return; }
   const R = D.rows, ok = r => r.mk_before > 0 && r.mk_after > 0;
   await loadWeekly(R.map(r => r.card_id)).catch(() => {}); if (FP.tab !== "week") return;
+  // (27 Nov, lab check) rows read like Collection: "Evolving Skies · Alt art · 215/203"
+  const CR = {}; (FP.rows || await loadCollection().catch(() => []) || []).forEach(c => CR[c.card_id] = c); if (FP.tab !== "week") return;
+  const subOf = r => { const c = CR[r.card_id] || r, num = c.num || r.num || ""; return `${esc(c.set_name || r.set_name || c.set_id || "")} · ${esc(RARW[c.look] || LOOK[c.look] || c.look || "")} · ${esc(num)}${c.official_count && /^\d+$/.test(num) ? "/" + c.official_count : ""}`.replace(/ · (?= · )/, ""); };
   const sm = (a, k) => a.reduce((s, r) => s + (r[k] || 0) * (r.qty || 1), 0), mv = R.filter(ok), fv = R.filter(r => r.fair_before > 0 && r.fair_after > 0);
   const mk = mv.length ? Math.log(sm(mv, "mk_after") / sm(mv, "mk_before")) : null, fk = fv.length ? Math.log(sm(fv, "fair_after") / sm(fv, "fair_before")) : null;
   const rowsBy = mv.map(r => ({ ...r, k: Math.log(r.mk_after / r.mk_before) })).sort((a, b) => b.k - a.k), up = rowsBy.filter(r => r.k > 0).slice(0, 5), dn = rowsBy.filter(r => r.k < 0).slice(-5).reverse();
   const mvRow = r => `<button class="crow" data-id="${esc(r.card_id)}"><span class="mini">${miniFor(FP.weekly[r.card_id], r.name)}</span>
-      <span class="cm"><b>${esc(r.name)}</b><span>${esc(r.set_name || "")} · ${esc(r.num || "")}</span><span class="rv"><b>${r.k > 0 ? "▲" : "▼"} ${pct(r.k, 1)}</b> · ${chf(r.mk_before)} → ${chf(r.mk_after)}</span></span>
+      <span class="cm"><b>${esc(r.name)}</b><span>${subOf(r)}</span><span class="rv"><b>${r.k > 0 ? "▲" : "▼"} ${pct(r.k, 1)}</b> · ${chf(r.mk_before)} → ${chf(r.mk_after)}</span></span>
       <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`;
   const zn = z => ZONE_PUB[z] || z, zc = R.filter(r => r.zone_before && r.zone_after && r.zone_before !== r.zone_after);
-  const sw = R.filter(r => r.sw_keys && r.sw_keys.length && r.fair_before > 0 && r.fair_after > 0);
+  // (27 Nov, lab check) the switch-on split by counterfactual: fair_cf = this week's fair price without the switch-on (same refit).
+  // switch-on = ln(after ÷ cf) · normal refit = ln(cf ÷ before); they add up to the card's fair change. Cards that only gained a
+  // parameter in an ordinary refit (sw_keys) stay "normal refit" and aren't listed here.
+  const sw = R.filter(r => r.fair_cf > 0 && r.fair_before > 0 && r.fair_after > 0).map(r => ({ ...r, s: Math.log(r.fair_after / r.fair_cf), n: Math.log(r.fair_cf / r.fair_before) }));
+  const wk0 = new Date(new Date(D.week + "T00:00").getTime() - 6 * 864e5).toISOString().slice(0, 10), names = SWITCHES.filter(([d]) => d >= wk0 && d <= D.week).map(([, t]) => t.replace(/ switch(es)? on$/, ""));
   let model;
   if (!sw.length) model = `<p style="margin:0">No model changes this week.</p>`;
-  else { const keys = [...new Set(sw.flatMap(r => r.sw_keys))];
-    model = keys.map(k => { const a = sw.filter(r => r.sw_keys.includes(k)), avg = a.reduce((s, r) => s + (r.sw_ln || 0), 0) / a.length;
-      return `<p style="margin:0 0 8px"><b>${esc(SWNAME(k))}</b>: ${a.length} card${a.length === 1 ? "" : "s"} · ${pct(avg, 1)} fair price on average</p>`; }).join("")
-      + `<div class="list">${sw.map(r => ({ ...r, tot: Math.log(r.fair_after / r.fair_before) })).sort((a, b) => Math.abs(b.sw_ln) - Math.abs(a.sw_ln)).slice(0, 5).map(r => `<div class="crow" style="cursor:default"><span class="mini">${miniFor(FP.weekly[r.card_id], r.name)}</span>
-        <span class="cm"><b>${esc(r.name)}</b><span>${r.held ? "Fair price under review" : `switch-on <b>${pct(r.sw_ln, 1)}</b> · normal refit ${pct(r.tot - r.sw_ln, 1)}`}</span></span><span></span></div>`).join("")}</div>`; }
+  else { const avg = sw.reduce((a, r) => a + r.s, 0) / sw.length;
+    model = `<p style="margin:0 0 8px"><b>${esc(names.join(" + ") || "Model change")}</b>: ${sw.length.toLocaleString("en-US")} card${sw.length === 1 ? "" : "s"} · ${pct(avg, 1)} fair price on average from the switch-on</p>`
+      + `<div class="list">${sw.sort((a, b) => Math.abs(b.s) - Math.abs(a.s)).slice(0, 5).map(r => `<div class="crow" style="cursor:default"><span class="mini">${miniFor(FP.weekly[r.card_id], r.name)}</span>
+        <span class="cm"><b>${esc(r.name)}</b><span>${r.held ? "Fair price under review" : `switch-on <b>${pct(r.s, 1)}</b> · normal refit ${pct(r.n, 1)}`}</span></span><span></span></div>`).join("")}</div>`; }
   const next = SWITCHES.filter(([d]) => d > D.week).slice(0, 3);
   $("view").innerHTML = head() + `<h1>This week</h1><p class="sub">After the refit of ${fmtDay(D.week)} · ${R.length.toLocaleString("en-US")} cards</p>
     <div class="box"><span class="label">Your collection this week</span><p class="wkh">${mk == null ? "–" : pct(mk, 1)} market · fair price ${fk == null ? "–" : pct(fk, 1)}</p>
-      <p class="foot" style="margin:0">Quantity-weighted over ${mv.length.toLocaleString("en-US")} cards with a price both weeks.</p></div>
+      <p class="foot" style="margin:0">Each card counts its price × the copies you hold, summed: market CHF ${Math.round(sm(mv, "mk_before")).toLocaleString("en-US")} → ${Math.round(sm(mv, "mk_after")).toLocaleString("en-US")} over ${mv.length.toLocaleString("en-US")} cards with a price both weeks${fv.length ? ` · fair CHF ${Math.round(sm(fv, "fair_before")).toLocaleString("en-US")} → ${Math.round(sm(fv, "fair_after")).toLocaleString("en-US")} over ${fv.length.toLocaleString("en-US")} cards with a fair price both weeks` : ""}. Before = the week before on each card's weekly line.</p></div>
     <h2 class="sh2">What moved</h2>${up.length ? `<p class="label" style="margin:0 4px 6px">Up</p><div class="list">${up.map(mvRow).join("")}</div>` : ""}${dn.length ? `<p class="label" style="margin:14px 4px 6px">Down</p><div class="list">${dn.map(mvRow).join("")}</div>` : ""}${!up.length && !dn.length ? `<div class="box"><p style="margin:0">No price moves this week.</p></div>` : ""}
     <h2 class="sh2">Zone changes</h2><div class="box">${zc.length ? zc.map(r => `<p style="margin:0 0 6px"><b>${esc(r.name)}</b> · ${esc(zn(r.zone_before))} → ${esc(zn(r.zone_after))}</p>`).join("") : `<p style="margin:0">${R.some(r => r.zone_before) ? "No card changed its price zone." : "Zone changes start with next week's page (this is the first one)."}</p>`}</div>
     <h2 class="sh2">What the model changed</h2><div class="box">${model}</div>
