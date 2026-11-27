@@ -99,7 +99,9 @@ function ringSvg(D, { size = 400, uid = "a", mini = false, phases = null, reprin
     if (miss.has(i) || miss.has(i + 1)) continue;
     const u0 = mon(t[i]), u1 = mon(t[i] + R3.WEEK), [col, wm] = segStyle(i), up = g[i] > 0, rec = i / (N - 1);
     const k = mini || sales[i] < 0 ? 1 : sales[i] < t1 ? 1 : sales[i] < t2 ? 2 : 3;
-    const fade = mini ? 1 : .45 + .55 * rec, op = (up ? (mini ? .85 : .95) : (mini ? .6 : .8)) * fade, sw = size * (mini ? .005 : .0016) * wm;
+    // (27 Nov, lab sign-off note) a grey mini cropped to a few weeks (Movers) is drawn heavier, so it reads like Weezing's full-history grey mini
+    const thinG = mini && D.nofair ? Math.min(8, Math.max(1, 64 / N)) : 1;
+    const fade = mini ? 1 : .45 + .55 * rec, op = (up ? (mini ? .85 : .95) : (mini ? (thinG > 1 ? .8 : .6) : .8)) * fade, sw = size * (mini ? .005 : .0016) * wm * thinG;
     const wa = Math.max(-1, Math.min(1, (g[i] - sm[i]) / .06)) * step * .42, wb = Math.max(-1, Math.min(1, (g[i + 1] - sm[i + 1]) / .06)) * step * .42;
     for (let j = 0; j < k; j++) {
       const off = (j - (k - 1) / 2) * (size * (.0016 * wm + .0012)), pts = [];
@@ -880,8 +882,9 @@ function setLineSvg(S) {                                    // 2 · the set's li
   const L = S.line; if (!L || !L.weeks || L.weeks.length < 2) return null;
   const W = L.weeks, lastW = W[W.length - 1], maxW = Math.max(26, Math.min(lastW, 160)), w = 340, h = 190, pl = 30, pr = 8, pt = 10, pb = 24;
   const since = isSince(S), REF = since ? (L.era_chase || []) : TYPICAL.v;
-  const vals = [...L.chase, ...L.mid, ...REF, ...(since ? [] : TYPICAL_MID.v)].filter(v => v != null), lo = Math.max(0, Math.min(0.4, ...vals) - .05), hi = Math.max(1.3, ...vals) + .05;
-  const X = wk => pl + (w - pl - pr) * (wk - 1) / (maxW - 1), Y = v => pt + (h - pt - pb) * (1 - (v - lo) / (hi - lo));
+  // (26 Nov lab check, M8 + M9) log scale: a halving and a doubling look the same size; ticks at 0.25 · 0.5 · 1 · 2 · 4 · 8
+  const vals = [...L.chase, ...L.mid, ...REF, ...(since ? [] : TYPICAL_MID.v)].filter(v => v > 0), lo = Math.log(Math.min(0.7, ...vals) / 1.08), hi = Math.log(Math.max(1.4, ...vals) * 1.08);
+  const X = wk => pl + (w - pl - pr) * (wk - 1) / (maxW - 1), Y = v => pt + (h - pt - pb) * (1 - (Math.log(Math.max(v, 1e-3)) - lo) / (hi - lo));
   const path = arr => { let d = "", on = false; W.forEach((wk, i) => { const v = arr[i]; if (v == null || wk > maxW) { on = false; return; } d += (on ? "L" : "M") + X(wk).toFixed(1) + "," + Y(v).toFixed(1); on = true; }); return d; };
   let typ = "", typm = "";
   if (since) typ = path(L.era_chase || []);
@@ -893,10 +896,10 @@ function setLineSvg(S) {                                    // 2 · the set's li
     if (ca > ta || cb > tb) fill += `<path class="sabove" d="M${X(a)},${Y(Math.max(ca, ta))}L${X(b)},${Y(Math.max(cb, tb))}L${X(b)},${Y(tb)}L${X(a)},${Y(ta)}Z"/>`; }
   const t0 = since ? SINCE0 : Date.parse(S.h.release_date);
   const ev = (S.ev || []).filter(e => e.day && S.h.release_date).map(e => ({ ...e, wk: Math.floor((Date.parse(e.day) - t0) / 6048e5) + 1 })).filter(e => e.wk >= 1 && e.wk <= maxW && e.phase !== "during");
-  const tstep = hi > 7 ? 2 : hi > 3.6 ? 1 : .5, ticks = []; for (let v = tstep; v < hi; v += tstep) if (v > lo) ticks.push(+v.toFixed(1));
+  const ticks = [.25, .5, 1, 2, 4, 8].filter(v => Math.log(v) > lo && Math.log(v) < hi);
   const xt = (since ? [1, 53, 105, 157] : [1, 13, 26, 39, 52, 78, 104, 130, 156]).filter(v => v <= maxW);
   return `<svg class="sline" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(S.h.name)}: median chase card and median mid card by week since release, against the typical set">
-    ${ticks.map(v => `<line class="sgrid" x1="${pl}" x2="${w - pr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="sax" x="${pl - 4}" y="${Y(v) + 3}" text-anchor="end">${v.toFixed(1)}</text>`).join("")}
+    ${ticks.map(v => `<line class="sgrid" x1="${pl}" x2="${w - pr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="sax" x="${pl - 4}" y="${Y(v) + 3}" text-anchor="end">${v < 1 ? String(v).replace(/^0/, "0") : v}</text>`).join("")}
     ${xt.map(v => `<text class="sax" x="${X(v)}" y="${h - 8}" text-anchor="${since && v === 1 ? "start" : "middle"}">${since ? sinceLabel(v) : v === 1 ? "wk 1" : v}</text>`).join("")}
     ${fill}<path class="styp" d="${typ}"/>${typm ? `<path class="stypm" d="${typm}"/>` : ""}<path class="smid" d="${path(L.mid)}"/><path class="schase" d="${path(L.chase)}"/>
     ${ev.map(e => `<circle class="sev" cx="${X(e.wk)}" cy="${h - pb}" r="3.5"><title>${esc(e.label)} · ${fmtDay(e.day)}${e.tested ? " · " + esc(e.tested) : ""}</title></circle>`).join("")}
@@ -981,12 +984,17 @@ async function chars() {
   $("view").innerHTML = head() + `<h1>Characters</h1><p class="sub">Loading…</p>`;
   let L; try { L = await loadChars(); } catch (e) { L = []; }
   if (FP.tab !== "chars") return;
-  const draw = f => { const rows = L.filter(c => !f || c.character.toLowerCase().includes(f.toLowerCase())).slice(0, 200);
-    $("chList").innerHTML = rows.length ? `<div class="list">${rows.map(c => `<button class="srow" data-ch="${esc(c.character)}"><span class="cm"><b>${esc(c.character)}</b>
+  const byDem = (a, b) => (b.demand == null) - (a.demand == null) || (+b.demand || 0) - (+a.demand || 0);
+  const row = c => `<button class="srow" data-ch="${esc(c.character)}"><span class="cm"><b>${esc(c.character)}</b>
       <span>${c.dex ? "#" + c.dex + " · " : ""}${c.n_cards} card${c.n_cards === 1 ? "" : "s"} in the app</span><span class="srm">${catChip(c)}${c.demand != null ? ` <span class="spx ${+c.demand > 1 ? "up" : ""}">${xm(+c.demand)}</span>` : ""}</span></span>
-      <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`).join("")}</div>` : `<div class="box empty"><p>No character matches.</p></div>`;
+      <svg class="chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg></button>`;
+  // (26 Nov lab check) characters with fewer than 5 cards don't rank: their × leans on the prior, so they sit below, in their own group
+  const draw = f => { const hit = L.filter(c => !f || c.character.toLowerCase().includes(f.toLowerCase())), main = hit.filter(c => c.n_cards >= 5).sort(byDem).slice(0, 200), few = hit.filter(c => c.n_cards < 5).sort(byDem).slice(0, 200);
+    $("chList").innerHTML = hit.length ? (main.length ? `<div class="list">${main.map(row).join("")}</div>` : "")
+      + (few.length ? `<h2 class="grp">Few cards yet</h2><p class="hint" style="text-align:left">Under 5 cards: the × leans on the species prior, not on the character's own cards.</p><div class="list">${few.map(row).join("")}</div>` : "")
+      : `<div class="box empty"><p>No character matches.</p></div>`;
     document.querySelectorAll("#chList .srow").forEach(b => b.onclick = () => { location.hash = "char/" + encodeURIComponent(b.dataset.ch); }); };
-  $("view").innerHTML = head() + `<h1>Characters</h1><p class="sub">${L.length} characters with cards in the app · by Character demand</p>
+  $("view").innerHTML = head() + `<h1>Characters</h1><p class="sub">${L.length} characters with cards in the app · by Character demand (5+ cards)</p>
     <input id="chq" class="search" type="search" placeholder="Search characters" aria-label="Search characters"><div id="chList"></div>
     <p class="foot">Character demand (P1) is what the fair price counts for the character, for its typical card. The species prior switches on with the ${fmtDay(SP_PRIOR_ON)} refit.</p>`;
   $("chq").oninput = e => draw(e.target.value); draw("");
