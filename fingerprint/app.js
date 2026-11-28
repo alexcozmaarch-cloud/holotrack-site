@@ -1144,7 +1144,8 @@ async function loadWeek(week) {
   const W = (await q(sb.from("fp_week_digest").select("week").order("week", { ascending: false }).range(0, 4999))).map(r => r.week).filter((v, i, a) => a.indexOf(v) === i);
   const wk = week && W.includes(week) ? week : W[0]; if (!wk) return { weeks: [], week: null, rows: [] };
   const rows = await q(sb.from("fp_week_digest").select("*").eq("week", wk).range(0, 4999));
-  return { weeks: W, week: wk, rows };
+  const chk = (await q(sb.from("fp_refit_check").select("*").eq("week", wk)).catch(() => []))[0] || null;   // (28 Nov) lab-only fair-move line
+  return { weeks: W, week: wk, rows, chk };
 }
 async function thisWeek(week) {
   $("view").innerHTML = head() + `<h1>This week</h1><p class="sub">Loading…</p>`;
@@ -1180,7 +1181,7 @@ async function thisWeek(week) {
       <p class="foot" style="margin:0">Each card counts its price × the copies you hold, summed: market CHF ${Math.round(sm(mv, "mk_before")).toLocaleString("en-US")} → ${Math.round(sm(mv, "mk_after")).toLocaleString("en-US")} over ${mv.length.toLocaleString("en-US")} cards with a price both weeks${fv.length ? ` · fair CHF ${Math.round(sm(fv, "fair_before")).toLocaleString("en-US")} → ${Math.round(sm(fv, "fair_after")).toLocaleString("en-US")} over ${fv.length.toLocaleString("en-US")} cards with a fair price both weeks` : ""}. Before = the week before on each card's weekly line.</p></div>
     <h2 class="sh2">What moved</h2>${up.length ? `<p class="label" style="margin:0 4px 6px">Up</p><div class="list">${up.map(mvRow).join("")}</div>` : ""}${dn.length ? `<p class="label" style="margin:14px 4px 6px">Down</p><div class="list">${dn.map(mvRow).join("")}</div>` : ""}${!up.length && !dn.length ? `<div class="box"><p style="margin:0">No price moves this week.</p></div>` : ""}
     <h2 class="sh2">Zone changes</h2><div class="box">${zc.length ? zc.map(r => `<p style="margin:0 0 6px"><b>${esc(r.name)}</b> · ${esc(zn(r.zone_before))} → ${esc(zn(r.zone_after))}</p>`).join("") : `<p style="margin:0">${R.some(r => r.zone_before) ? "No card changed its price zone." : "Zone changes start with next week's page (this is the first one)."}</p>`}</div>
-    <h2 class="sh2">What the model changed</h2><div class="box">${model}</div>
+    <h2 class="sh2">What the model changed</h2><div class="box">${model}${D.chk ? `<p class="foot" style="margin:10px 0 0">Lab check · all ${(+D.chk.n).toLocaleString("en-US")} priced cards: median fair move ${(100 * D.chk.med_abs).toFixed(1)} %, ${(100 * D.chk.share15).toFixed(1)} % moved more than 15 % · steady cards (market under 5 %): ${(100 * (D.chk.steady_share15 || 0)).toFixed(1)} % moved more than 15 %${D.chk.flag ? " · above the lab's 1 in 5 — flagged" : ""}</p>` : ""}</div>
     <h2 class="sh2">Coming up</h2><div class="box">${next.length ? next.map(([d, t]) => `<p style="margin:0 0 6px"><span class="label">${fmtDay(d)}</span><br>${esc(t)}</p>`).join("") : `<p style="margin:0">Nothing dated yet.</p>`}</div>
     ${D.weeks.length > 1 ? `<h2 class="sh2">Past weeks</h2><div class="chips">${D.weeks.map(w => `<button class="chip${w === D.week ? " on" : ""}" data-wk="${w}">${fmtDay(w)}</button>`).join("")}</div>` : ""}
     <p class="foot">TCGplayer market price · fair price from HoloTrack's model (weekly refit). Dates only, no forecasts.</p>`;
